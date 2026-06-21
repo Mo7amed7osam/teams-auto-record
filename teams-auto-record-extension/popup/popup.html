@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    >
+    <title>Teams Auto Record</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="popup">
+      <header class="hero">
+        <p class="eyebrow">Microsoft Teams Web</p>
+        <h1>Teams Auto Record</h1>
+        <p class="subtitle">
+          Preview meetings first, then update only the
+          automatic recording setting.
+        </p>
+      </header>
+
+      <section class="panel">
+        <h2>Filters</h2>
+        <div class="form-grid">
+          <label>
+            <span>Target date</span>
+            <input id="targetDate" type="date">
+          </label>
+          <label>
+            <span>Start time</span>
+            <input
+              id="startTime"
+              type="text"
+              placeholder="2:00 PM"
+            >
+          </label>
+          <label>
+            <span>End time</span>
+            <input
+              id="endTime"
+              type="text"
+              placeholder="5:00 PM"
+            >
+          </label>
+          <label class="full-width">
+            <span>Title include filter</span>
+            <input
+              id="titleIncludes"
+              type="text"
+              placeholder="Comma-separated values"
+            >
+          </label>
+          <label class="full-width">
+            <span>Title exclusion filter</span>
+            <input
+              id="titleExcludes"
+              type="text"
+              placeholder="Comma-separated values"
+            >
+          </label>
+          <label>
+            <span>Limit</span>
+            <select id="limitMode">
+              <option value="all">All meetings</option>
+              <option value="3">First 3</option>
+              <option value="custom">Custom number</option>
+            </select>
+          </label>
+          <label id="limitCountWrap" class="hidden">
+            <span>Custom limit</span>
+            <input
+              id="limitCount"
+              type="number"
+              min="1"
+              step="1"
+              placeholder="5"
+            >
+          </label>
+          <label>
+            <span>Retry count</span>
+            <input
+              id="retriesPerMeeting"
+              type="number"
+              min="1"
+              step="1"
+            >
+          </label>
+          <label>
+            <span>Delay between meetings (ms)</span>
+            <input
+              id="delayBetweenMeetingsMs"
+              type="number"
+              min="250"
+              step="250"
+            >
+          </label>
+          <label>
+            <span>Pause every N meetings</span>
+            <input
+              id="pauseEvery"
+              type="number"
+              min="1"
+              step="1"
+            >
+          </label>
+          <label>
+            <span>Pause duration (ms)</span>
+            <input
+              id="pauseDurationMs"
+              type="number"
+              min="250"
+              step="250"
+            >
+          </label>
+          <label>
+            <span>Timeout (ms)</span>
+            <input
+              id="timeoutMs"
+              type="number"
+              min="1000"
+              step="500"
+            >
+          </label>
+          <label class="checkbox full-width">
+            <input id="previewOnly" type="checkbox">
+            <span>Preview-only mode</span>
+          </label>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Actions</h2>
+        <div class="button-row">
+          <button id="previewButton" type="button">
+            Preview meetings
+          </button>
+          <button id="startButton" type="button">
+            Start automation
+          </button>
+        </div>
+        <div class="button-row secondary">
+          <button id="stopButton" type="button">
+            Stop automation
+          </button>
+          <button id="clearButton" type="button">
+            Clear report
+          </button>
+          <button id="exportButton" type="button">
+            Export CSV
+          </button>
+        </div>
+        <p id="message" class="message" aria-live="polite"></p>
+      </section>
+
+      <section class="panel">
+        <div class="status-header">
+          <h2>Status</h2>
+          <span id="statusBadge" class="badge">Idle</span>
+        </div>
+        <dl class="stats">
+          <div>
+            <dt>Meetings found</dt>
+            <dd id="meetingsFound">0</dd>
+          </div>
+          <div>
+            <dt>Processed</dt>
+            <dd id="meetingsProcessed">0</dd>
+          </div>
+          <div>
+            <dt>Updated</dt>
+            <dd id="updatedCount">0</dd>
+          </div>
+          <div>
+            <dt>Already enabled</dt>
+            <dd id="alreadyEnabledCount">0</dd>
+          </div>
+          <div>
+            <dt>Failed</dt>
+            <dd id="failedCount">0</dd>
+          </div>
+          <div class="full-row">
+            <dt>Current meeting</dt>
+            <dd id="currentMeeting">None</dd>
+          </div>
+        </dl>
+        <div class="progress-block">
+          <div class="progress-meta">
+            <span>Progress</span>
+            <span id="progressText">0%</span>
+          </div>
+          <div
+            id="progressTrack"
+            class="progress-track"
+            role="progressbar"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow="0"
+          >
+            <div id="progressFill" class="progress-fill"></div>
+          </div>
+        </div>
+        <p id="warning" class="warning" aria-live="polite"></p>
+        <p id="error" class="error" aria-live="assertive"></p>
+      </section>
+
+      <section class="panel">
+        <div class="status-header">
+          <h2>Report</h2>
+          <span id="reportCount" class="muted">0 rows</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Title</th>
+                <th>Date</th>
+                <th>Time</th>
+                <th>Status</th>
+                <th>Error</th>
+              </tr>
+            </thead>
+            <tbody id="reportBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="../shared/constants.js"></script>
+    <script src="../shared/utils.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

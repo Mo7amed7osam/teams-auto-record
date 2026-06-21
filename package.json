@@ -1,0 +1,9 @@
+{
+  "name": "teams-auto-record-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Workspace for the Teams Auto Record Chrome extension.",
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  }
+}
