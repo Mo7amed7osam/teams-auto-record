@@ -5,11 +5,15 @@
   "description": "Preview and enable automatic recording and transcription for matching Microsoft Teams Web meetings.",
   "permissions": [
     "activeTab",
+    "tabs",
     "storage",
-    "scripting"
+    "scripting",
+    "webNavigation"
   ],
   "host_permissions": [
-    "https://teams.microsoft.com/*"
+    "https://teams.microsoft.com/*",
+    "https://teams.cloud.microsoft/*",
+    "https://outlook.office.com/*"
   ],
   "action": {
     "default_title": "Teams Auto Record",
@@ -21,8 +25,11 @@
   "content_scripts": [
     {
       "matches": [
-        "https://teams.microsoft.com/*"
+        "https://teams.microsoft.com/*",
+        "https://teams.cloud.microsoft/*",
+        "https://outlook.office.com/*"
       ],
+      "all_frames": true,
       "js": [
         "shared/constants.js",
         "shared/utils.js",

@@ -9,6 +9,8 @@
   const {
     MESSAGE_TYPES,
     STATUS,
+    DATE_LABEL_REGEX,
+    TIME_RANGE_REGEX,
     normalizeText,
     normalizeConfig,
     parseMeetingLabel,
@@ -16,7 +18,8 @@
     applyLimit,
     summarizeResults,
     formatError,
-    isLikelyTeamsCalendarUrl
+    isLikelyTeamsCalendarUrl,
+    isSupportedTeamsUrl
   } = shared;
 
   const runtime = {
@@ -97,33 +100,149 @@
     return snapshot;
   }
 
-  function getCalendarMeetingButtons() {
-    return [
-      ...document.querySelectorAll('[role="button"]')
-    ].filter(button => {
-      if (!visible(button)) {
+  function getMeetingMetadataTexts(element) {
+    const texts = [];
+
+    function pushText(value) {
+      const normalized = normalizeText(value);
+      if (
+        normalized &&
+        !texts.includes(normalized)
+      ) {
+        texts.push(normalized);
+      }
+    }
+
+    pushText(element?.getAttribute?.("aria-label"));
+    pushText(element?.getAttribute?.("title"));
+    pushText(element?.innerText);
+
+    let current = element?.parentElement || null;
+    let depth = 0;
+
+    while (current && depth < 5) {
+      pushText(current.getAttribute?.("aria-label"));
+      pushText(current.getAttribute?.("title"));
+      current = current.parentElement;
+      depth += 1;
+    }
+
+    return texts;
+  }
+
+  function getMeetingDescriptor(element) {
+    const rect = element.getBoundingClientRect();
+    const metadataTexts = getMeetingMetadataTexts(element);
+    const primaryText =
+      metadataTexts.find(text => {
+        return (
+          /meeting|busy|free|tentative|organizer/i.test(
+            text
+          ) ||
+          DATE_LABEL_REGEX.test(text) ||
+          TIME_RANGE_REGEX.test(text)
+        );
+      }) ||
+      metadataTexts[0] ||
+      "";
+
+    const parsed = parseMeetingLabel(primaryText);
+    const fallbackTitle = normalizeText(
+      element?.innerText || primaryText
+    );
+    const hasTimeRange =
+      TIME_RANGE_REGEX.test(primaryText);
+    const hasDateLabel =
+      DATE_LABEL_REGEX.test(primaryText);
+    const hasMeetingKeyword =
+      /meeting|busy|free|tentative/i.test(primaryText);
+    const eventLikeGeometry =
+      rect.top > 120 &&
+      rect.height >= 80 &&
+      rect.width >= 10;
+
+    return {
+      element,
+      rect,
+      primaryText,
+      parsed,
+      key:
+        primaryText ||
+        `${Math.round(rect.x)}:${Math.round(rect.y)}:${Math.round(rect.width)}:${Math.round(rect.height)}`,
+      title: parsed.title || fallbackTitle,
+      time: parsed.time,
+      date: parsed.date,
+      eventLike:
+        eventLikeGeometry &&
+        (hasMeetingKeyword ||
+          hasTimeRange ||
+          hasDateLabel ||
+          rect.height >= 140)
+    };
+  }
+
+  function dedupeMeetingElements(elements) {
+    const seen = new Set();
+    const deduped = [];
+
+    elements.forEach(element => {
+      const descriptor = getMeetingDescriptor(element);
+      const signature = [
+        descriptor.key,
+        Math.round(descriptor.rect.x),
+        Math.round(descriptor.rect.y),
+        Math.round(descriptor.rect.width),
+        Math.round(descriptor.rect.height)
+      ].join("|");
+
+      if (seen.has(signature)) {
+        return;
+      }
+
+      seen.add(signature);
+      deduped.push(element);
+    });
+
+    return deduped;
+  }
+
+  function getPotentialMeetingElements() {
+    const selector = [
+      'button',
+      '[role="button"]',
+      '[title]',
+      '[aria-label]',
+      '[draggable="true"]'
+    ].join(", ");
+
+    const candidates = [
+      ...document.querySelectorAll(selector)
+    ].filter(element => {
+      if (!visible(element)) {
         return false;
       }
 
-      const label = button.getAttribute("aria-label") || "";
-      return /Microsoft Teams Meeting/i.test(label);
+      return getMeetingDescriptor(element).eventLike;
     });
+
+    return dedupeMeetingElements(candidates);
+  }
+
+  function getCalendarMeetingButtons() {
+    return getPotentialMeetingElements();
   }
 
   function validateTeamsCalendarPage() {
-    if (location.hostname !== "teams.microsoft.com") {
+    if (!isSupportedTeamsUrl(location.href)) {
       throw new Error("Not on Microsoft Teams Web.");
     }
+  }
 
-    const looksLikeCalendar =
-      isLikelyTeamsCalendarUrl(location.href) ||
-      getCalendarMeetingButtons().length > 0;
-
-    if (!looksLikeCalendar) {
-      throw new Error(
-        "Not on the Teams Calendar page."
-      );
-    }
+  function isSupportedCalendarFrame() {
+    return (
+      isSupportedTeamsUrl(location.href) &&
+      getCalendarMeetingButtons().length > 0
+    );
   }
 
   function matchesMeetingElement(element, config) {
@@ -131,18 +250,39 @@
       return false;
     }
 
-    const label = element.getAttribute("aria-label") || "";
-    if (!/Microsoft Teams Meeting/i.test(label)) {
+    const descriptor = getMeetingDescriptor(element);
+
+    if (!descriptor.eventLike) {
       return false;
     }
 
-    return matchesMeetingLabel(label, config);
+    if (
+      descriptor.primaryText &&
+      (TIME_RANGE_REGEX.test(descriptor.primaryText) ||
+        DATE_LABEL_REGEX.test(descriptor.primaryText) ||
+        /meeting/i.test(descriptor.primaryText))
+    ) {
+      return matchesMeetingLabel(
+        descriptor.primaryText,
+        config
+      );
+    }
+
+    const title = descriptor.title.toLowerCase();
+    const includeMatches =
+      config.titleIncludes.length === 0 ||
+      config.titleIncludes.some(value =>
+        title.includes(value.toLowerCase())
+      );
+    const excluded = config.titleExcludes.some(value =>
+      title.includes(value.toLowerCase())
+    );
+
+    return includeMatches && !excluded;
   }
 
   function getMatchingMeetings(config) {
-    return [
-      ...document.querySelectorAll('[role="button"]')
-    ]
+    return getPotentialMeetingElements()
       .filter(element =>
         matchesMeetingElement(element, config)
       )
@@ -162,20 +302,22 @@
     const occurrences = new Map();
 
     return meetings.map((element, index) => {
-      const label =
-        element.getAttribute("aria-label") || "";
-      const occurrence = occurrences.get(label) || 0;
-      const parsed = parseMeetingLabel(label);
+      const descriptor = getMeetingDescriptor(element);
+      const occurrence =
+        occurrences.get(descriptor.key) || 0;
 
-      occurrences.set(label, occurrence + 1);
+      occurrences.set(descriptor.key, occurrence + 1);
 
       return {
         number: index + 1,
-        ariaLabel: label,
+        key: descriptor.key,
         occurrence,
-        title: parsed.title,
-        time: parsed.time,
-        date: parsed.date || "Visible calendar date"
+        title:
+          descriptor.title || `Meeting ${index + 1}`,
+        time:
+          descriptor.time || "Visible calendar time",
+        date:
+          descriptor.date || "Visible calendar date"
       };
     });
   }
@@ -183,8 +325,7 @@
   function findPlannedMeeting(item, config) {
     const matches = getMatchingMeetings(config).filter(
       element =>
-        (element.getAttribute("aria-label") || "") ===
-        item.ariaLabel
+        getMeetingDescriptor(element).key === item.key
     );
 
     return matches[item.occurrence] || null;
@@ -320,7 +461,7 @@
       () =>
         [
           ...document.querySelectorAll(
-            'button[aria-label*="online meeting options"]'
+            'button[aria-label*="online meeting options"], button[title*="online meeting options"]'
           )
         ].find(visible) ||
         findVisibleControl(
@@ -651,6 +792,15 @@
       }
 
       if (message.type === MESSAGE_TYPES.PREVIEW_MEETINGS) {
+        if (!isSupportedCalendarFrame()) {
+          sendResponse({
+            ok: false,
+            errorCode: "UNSUPPORTED_CONTEXT",
+            error: "This frame is not the Teams calendar content."
+          });
+          return false;
+        }
+
         previewMeetings(message.config)
           .then(result => {
             sendResponse({
@@ -674,6 +824,15 @@
       }
 
       if (message.type === MESSAGE_TYPES.START_AUTOMATION) {
+        if (!isSupportedCalendarFrame()) {
+          sendResponse({
+            ok: false,
+            errorCode: "UNSUPPORTED_CONTEXT",
+            error: "This frame is not the Teams calendar content."
+          });
+          return false;
+        }
+
         runAutomation(message.config);
         sendResponse({ ok: true });
         return false;

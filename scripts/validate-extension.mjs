@@ -1,0 +1,271 @@
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import {
+  access,
+  readFile,
+  readdir,
+  stat
+} from "node:fs/promises";
+import path from "node:path";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
+import {
+  criticalStrings,
+  distDirectory,
+  javascriptFiles,
+  sourceDirectory
+} from "./build-config.mjs";
+
+const require = createRequire(import.meta.url);
+
+async function readJson(filePath) {
+  return JSON.parse(await readFile(filePath, "utf8"));
+}
+
+async function listFiles(directory) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const nestedFiles = await Promise.all(
+    entries.map(async entry => {
+      const entryPath = path.join(directory, entry.name);
+      return entry.isDirectory()
+        ? listFiles(entryPath)
+        : [entryPath];
+    })
+  );
+  return nestedFiles.flat();
+}
+
+function collectManifestReferences(manifest) {
+  const references = new Set();
+
+  if (manifest.action?.default_popup) {
+    references.add(manifest.action.default_popup);
+  }
+  if (manifest.background?.service_worker) {
+    references.add(manifest.background.service_worker);
+  }
+
+  for (const contentScript of manifest.content_scripts || []) {
+    for (const filePath of [
+      ...(contentScript.js || []),
+      ...(contentScript.css || [])
+    ]) {
+      references.add(filePath);
+    }
+  }
+
+  for (const iconCollection of [manifest.icons, manifest.action?.default_icon]) {
+    if (!iconCollection) {
+      continue;
+    }
+    for (const filePath of Object.values(iconCollection)) {
+      references.add(filePath);
+    }
+  }
+
+  return [...references];
+}
+
+async function assertFileExists(relativePath) {
+  const filePath = path.join(distDirectory, relativePath);
+  await access(filePath);
+  assert.equal(
+    (await stat(filePath)).isFile(),
+    true,
+    `${relativePath} is not a file`
+  );
+}
+
+function assertValidJavaScript(filePath) {
+  execFileSync(process.execPath, ["--check", filePath], {
+    stdio: "pipe"
+  });
+}
+
+function assertNoUnsafeCode(relativePath, sourceCode) {
+  assert.doesNotMatch(
+    sourceCode,
+    /\beval\s*\(/,
+    `${relativePath} contains eval()`
+  );
+  assert.doesNotMatch(
+    sourceCode,
+    /\bnew\s+Function\s*\(/,
+    `${relativePath} contains new Function()`
+  );
+  assert.doesNotMatch(
+    sourceCode,
+    /https?:\/\/[^\s"']+\.js(?:[?"'\s]|$)/i,
+    `${relativePath} references external JavaScript`
+  );
+}
+
+function assertPopupCspSafety(html) {
+  assert.doesNotMatch(
+    html,
+    /<script(?![^>]*\bsrc\s*=)[^>]*>/i,
+    "popup.html contains inline JavaScript"
+  );
+
+  const scriptSources = [...html.matchAll(
+    /<script[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi
+  )].map(match => match[1]);
+
+  for (const source of scriptSources) {
+    assert.doesNotMatch(
+      source,
+      /^(?:https?:)?\/\//i,
+      `popup.html loads remote JavaScript: ${source}`
+    );
+  }
+}
+
+function assertNoSecrets(filesWithContents) {
+  const secretPatterns = [
+    /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
+    /\bAKIA[0-9A-Z]{16}\b/,
+    /\bgh[pousr]_[A-Za-z0-9]{30,}\b/,
+    /\bxox[baprs]-[A-Za-z0-9-]{20,}\b/,
+    /\bsk_live_[A-Za-z0-9]{16,}\b/
+  ];
+
+  for (const { relativePath, contents } of filesWithContents) {
+    for (const pattern of secretPatterns) {
+      assert.doesNotMatch(
+        contents,
+        pattern,
+        `${relativePath} appears to contain a secret`
+      );
+    }
+  }
+}
+
+function smokeTestProtectedSharedCode() {
+  const constantsPath = path.join(
+    distDirectory,
+    "shared/constants.js"
+  );
+  const utilsPath = path.join(distDirectory, "shared/utils.js");
+
+  delete require.cache[require.resolve(constantsPath)];
+  delete require.cache[require.resolve(utilsPath)];
+  delete globalThis.TeamsAutoRecordShared;
+
+  require(constantsPath);
+  const shared = require(utilsPath);
+  const config = shared.normalizeConfig({
+    targetDate: "2026-06-23",
+    startTime: "2:00 PM",
+    endTime: "5:00 PM"
+  });
+
+  assert.equal(
+    shared.MESSAGE_TYPES.START_AUTOMATION,
+    "START_AUTOMATION"
+  );
+  assert.equal(
+    shared.matchesMeetingLabel(
+      "L1_0172, 14:00 to 17:00, Tuesday, June 23, 2026, Busy",
+      config
+    ),
+    true
+  );
+}
+
+export async function validateExtension() {
+  const sourceManifest = await readJson(
+    path.join(sourceDirectory, "manifest.json")
+  );
+  const distManifest = await readJson(
+    path.join(distDirectory, "manifest.json")
+  );
+
+  assert.equal(distManifest.manifest_version, 3);
+  assert.deepEqual(
+    distManifest.permissions || [],
+    sourceManifest.permissions || [],
+    "Manifest permissions changed during the build"
+  );
+  assert.deepEqual(
+    distManifest.host_permissions || [],
+    sourceManifest.host_permissions || [],
+    "Manifest host permissions changed during the build"
+  );
+  assert.doesNotMatch(
+    JSON.stringify(distManifest.content_security_policy || {}),
+    /unsafe-eval/i,
+    "Manifest CSP contains unsafe-eval"
+  );
+
+  const manifestReferences = collectManifestReferences(distManifest);
+  await Promise.all(manifestReferences.map(assertFileExists));
+
+  const distFiles = await listFiles(distDirectory);
+  const relativeDistFiles = distFiles.map(filePath =>
+    path.relative(distDirectory, filePath)
+  );
+  assert.equal(
+    relativeDistFiles.some(filePath => filePath.endsWith(".map")),
+    false,
+    "Source maps were found in dist/"
+  );
+
+  const filesWithContents = await Promise.all(
+    distFiles
+      .filter(filePath => /\.(?:js|json|html|css|md)$/i.test(filePath))
+      .map(async filePath => ({
+        relativePath: path.relative(distDirectory, filePath),
+        contents: await readFile(filePath, "utf8")
+      }))
+  );
+
+  const sourceFilesWithContents = await Promise.all(
+    ["manifest.json", ...javascriptFiles].map(async relativePath => ({
+      relativePath,
+      contents: await readFile(
+        path.join(sourceDirectory, relativePath),
+        "utf8"
+      )
+    }))
+  );
+
+  for (const relativePath of javascriptFiles) {
+    const filePath = path.join(distDirectory, relativePath);
+    const sourceCode = await readFile(filePath, "utf8");
+    assertValidJavaScript(filePath);
+    assertNoUnsafeCode(relativePath, sourceCode);
+  }
+
+  const sourceRuntimeText = sourceFilesWithContents
+    .map(file => file.contents)
+    .join("\n");
+  const distRuntimeText = filesWithContents
+    .map(file => file.contents)
+    .join("\n");
+  for (const criticalString of criticalStrings) {
+    if (!sourceRuntimeText.includes(criticalString)) {
+      continue;
+    }
+
+    assert.equal(
+      distRuntimeText.includes(criticalString),
+      true,
+      `Critical runtime string missing from output: ${criticalString}`
+    );
+  }
+
+  assertPopupCspSafety(
+    await readFile(path.join(distDirectory, "popup/popup.html"), "utf8")
+  );
+  assertNoSecrets(filesWithContents);
+  smokeTestProtectedSharedCode();
+
+  console.log("Manifest V3 JSON and referenced files: valid");
+  console.log("Permissions and host permissions: unchanged");
+  console.log("JavaScript syntax and distribution shared-code smoke test: valid");
+  console.log("CSP, source maps, remote code, unsafe code, and secrets: clean");
+}
+
+if (pathToFileURL(process.argv[1]).href === import.meta.url) {
+  await validateExtension();
+}

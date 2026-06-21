@@ -68,6 +68,7 @@
       running: false,
       stopRequested: false,
       activeTabId: null,
+      activeFrameId: null,
       currentMeetingTitle: "",
       previewPlan: [],
       results: [],

@@ -47,6 +47,22 @@ test("matchesMeetingLabel respects include and exclude filters", () => {
   );
 });
 
+test("matchesMeetingLabel supports 24-hour time ranges", () => {
+  const config = shared.normalizeConfig({
+    targetDate: "2026-06-23",
+    startTime: "2:00 PM",
+    endTime: "5:00 PM"
+  });
+
+  assert.equal(
+    shared.matchesMeetingLabel(
+      "L1_0172, 14:00 to 17:00, Tuesday, June 23, 2026, Busy",
+      config
+    ),
+    true
+  );
+});
+
 test("applyLimit returns the first n items when configured", () => {
   assert.deepEqual(
     shared.applyLimit([1, 2, 3, 4], 3),
