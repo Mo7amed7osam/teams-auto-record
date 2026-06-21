@@ -296,3 +296,21 @@ tbody tr:last-child td {
 .hidden {
   display: none;
 }
+
+.credit {
+  padding: 2px 8px 8px;
+  color: var(--muted);
+  text-align: center;
+  font-size: 12px;
+}
+
+.credit a {
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.credit a:hover,
+.credit a:focus-visible {
+  text-decoration: underline;
+}
