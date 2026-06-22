@@ -1,173 +1,112 @@
-# Teams Auto Record Chrome Extension
+# Teams Meeting Automation Chrome Extension
 
-## What It Does
+This Manifest V3 extension automates two independent Microsoft Teams Web
+meeting settings for meetings visible in the current Calendar view:
 
-This extension previews matching Microsoft Teams Web calendar meetings and can enable the Teams setting:
+- **Auto Recording** enables `Record and transcribe automatically`.
+- **Lobby Access** sets `Who can bypass the lobby?` to `Everyone`.
 
-- `Record and transcribe automatically`
+Both features preview matching meetings before live changes, preserve duplicate
+meeting titles as separate events, support Stop and retries, store independent
+local reports, and export CSV files.
 
-It only works on:
+## Safety scope
+
+Auto Recording changes only recording and transcription. Lobby Access changes
+only the lobby bypass dropdown. The extension never joins, deletes, cancels, or
+reschedules meetings and never changes attendees, titles, dates, roles,
+presenter settings, Copilot, microphones, cameras, chat, links, or recurrence.
+
+Preview-only mode is enabled by default. Live runs require disabling it and
+confirming the exact action after preview.
+
+## Supported pages
+
+The top-level Teams app uses:
 
 - `https://teams.microsoft.com/*`
+- `https://teams.cloud.microsoft/*`
 
-It processes meetings visible in the Teams Calendar UI by reusing the same selector-driven automation approach from the original Console script.
+The current Teams Calendar is embedded from:
 
-## What It Does Not Do
+- `https://outlook.office.com/hosted/calendar/`
 
-- It does not join meetings.
-- It does not delete meetings.
-- It does not edit titles, dates, times, attendees, organizers, recurrence, or meeting URLs.
-- It does not read passwords, cookies, access tokens, or Teams chat content.
-- It does not transmit meeting data to any external server.
+No additional host permissions were introduced for Lobby Access.
 
-## Folder To Load In Chrome
+## Install and use
 
-Load this folder as an unpacked extension:
+1. Run `npm install` and `npm run build:dev` from the repository root.
+2. Open `chrome://extensions`, enable Developer mode, and choose Load unpacked.
+3. Select the repository-level `dist/` directory.
+4. Open Teams Calendar and keep the target meetings visible.
+5. Open the popup and select **Auto Recording** or **Lobby Access**.
+6. Configure date, time, title, limit, retry, and timing filters.
+7. Preview first, review the count, then start a live run if required.
+8. Use Stop to recover safely and Export CSV for the active feature's report.
 
-- `/Users/mohamedhosam/Documents/New project/teams-auto-record-extension`
+The original Console fallback remains unchanged at
+`/Users/mohamedhosam/Documents/New project/teams-auto-record.js`.
 
-## Installation Steps
+## Architecture
 
-1. Open `chrome://extensions`.
-2. Enable `Developer mode`.
-3. Click `Load unpacked`.
-4. Select the `teams-auto-record-extension` folder.
-5. Pin the extension if you want quick access.
+- `background/service-worker.js` routes feature-specific messages, persists
+  independent state, locates the embedded Calendar frame, and prevents both
+  automations from running simultaneously.
+- `content/content.js` owns shared calendar discovery, filtering, duplicate
+  occurrence planning, meeting navigation, retries, Stop, and both batch loops.
+- `content/lobby-access.js` contains only scoped Lobby Access DOM discovery.
+- `shared/constants.js` defines stable messages, storage keys, defaults, and
+  state factories for both features.
+- `shared/utils.js` contains shared meeting filters and plan construction.
+- `shared/lobby-utils.js` contains lobby normalization, summaries, stopped-row
+  generation, and feature-labelled CSV output.
+- `popup/` provides the two-tab UI over independent configurations and reports.
 
-## How To Use
+## Verified selectors
 
-1. Open Microsoft Teams Web.
-2. Navigate to Calendar.
-3. Keep the target meetings visible in the current calendar view.
-4. Open the extension popup.
-5. Set the target date, time range, and optional title filters.
-6. Click `Preview meetings`.
-7. Review the meeting count and report.
-8. If you want live changes, disable `Preview-only mode`.
-9. Click `Start automation`.
-10. Confirm the warning prompt before live updates begin.
-11. Use `Stop automation` to stop safely after the current step.
-12. Use `Export CSV` to download the final report.
-
-## Default Safety Behavior
-
-The popup defaults to `previewOnly: true`, so it will not change meetings unless you explicitly turn preview-only off and confirm the run.
-
-## Stored Data
-
-The extension stores only local browser data in `chrome.storage.local`:
-
-- saved configuration
-- current progress
-- final result rows
-- running state
-
-It does not store Microsoft credentials or authentication artifacts.
-
-## Permissions
-
-The extension requests only:
-
-- `activeTab`
-- `storage`
-- `scripting`
-- host access for `https://teams.microsoft.com/*`
-
-## Architecture Summary
-
-- `manifest.json`
-  Defines the MV3 extension, popup, service worker, host permissions, and Teams content script.
-- `background/service-worker.js`
-  Coordinates popup requests, injects the content script when needed, persists state, and relays progress updates.
-- `content/content.js`
-  Runs the Teams UI automation on the page using selectors, polling, retries, cancellation, and detailed result tracking.
-- `shared/constants.js`
-  Shared message names, defaults, storage keys, and state constants.
-- `shared/utils.js`
-  Shared pure utilities for config normalization, Teams label parsing, filtering, summaries, and CSV export.
-- `popup/popup.html`, `popup/popup.css`, `popup/popup.js`
-  Compact operator UI for filters, preview, automation control, progress, and results.
-- `/Users/mohamedhosam/Documents/New project/teams-auto-record.js`
-  The original Console fallback script remains unchanged outside the extension folder.
-
-## Manual Test Checklist
-
-1. Load the unpacked extension from `chrome://extensions`.
-2. Open Teams Web.
-3. Open Calendar Day view.
-4. Preview a date and time range.
-5. Verify the number of meetings found.
-6. Run on one meeting.
-7. Run on three meetings.
-8. Verify already-enabled meetings are skipped.
-9. Verify duplicate-title meetings are processed independently.
-10. Verify `Stop automation` works.
-11. Verify the final report appears in the popup.
-12. Verify no meetings were joined or otherwise modified.
-13. Refresh Teams and verify the extension still works.
-
-## Automated Tests
-
-Pure utility tests are included for:
-
-- meeting label parsing
-- date formatting
-- include/exclude title filtering
-- limit handling
-- result summaries
-- CSV generation
-
-Run them from the repository root:
-
-```bash
-npm test
-```
-
-## Known Limitations
-
-- The extension depends on Teams Web selectors and accessible labels that may change over time.
-- It only processes meetings visible in the current Teams calendar view.
-- Teams is a dynamic single-page application, so temporary loading states can still cause retries or failures.
-- The Calendar page detection is heuristic-based because Teams routing can vary across deployments.
-- If Microsoft changes the `data-tid` values for the recording controls, the selectors must be updated.
-
-## Troubleshooting
-
-- If preview finds zero meetings, make sure the meetings are visible in Calendar and the filters match the aria-label values.
-- If `Edit` or `Meeting options` fails, wait for Teams to finish rendering and try again.
-- If the popup shows `Not on the Teams Calendar page`, navigate explicitly to Calendar before retrying.
-- If `Apply` never becomes enabled, inspect whether the meeting type supports automatic recording in your tenant.
-- If the extension was loaded before a Teams tab existed, refresh the Teams tab once after loading the extension.
-
-## Selector Maintenance Notes
-
-The current implementation is based on selectors already verified in Teams Web:
+Auto Recording retains:
 
 - `[data-tid="AutoRecordAndTranscribeMode"]`
 - `[data-tid="AutoRecordingAndTranscription"]`
-- meeting buttons with `[role="button"]` and `aria-label` containing `Microsoft Teams Meeting`
 
-The Meeting Options trigger is matched by:
+Lobby Access was verified against the live Teams DOM on June 22, 2026:
 
-- `button[aria-label*="online meeting options"]`
-- a fallback text matcher that looks for `online meeting options`
+- `[data-tid="AutoAdmittedUsers"][role="combobox"]`
+- fallback: `[role="combobox"][aria-label="Who can bypass the lobby?"]`
+- selected target: `[role="option"][data-tid="Everyone"]` with exact text
+  `Everyone`
+- the Meeting access tab uses `role="tab"` and exact text `Meeting access`
+- Apply is selected by exact text inside the same visible Meeting options dialog
 
-If Teams changes any of these selectors, update `content/content.js` first and verify preview mode before live changes.
+Selectors never use coordinates. See `LOBBY_ACCESS.md` for maintenance details.
 
-## Packaging As ZIP
+## Local data and privacy
 
-To create a ZIP for local sharing or store preparation:
+Configurations, progress, and result rows are stored only in
+`chrome.storage.local`. Lobby results may contain meeting title, visible date,
+visible time, previous lobby value, new value, status, and error reason. The
+extension does not store attendees, organizers, meeting links, bodies,
+credentials, cookies, or tokens and does not send meeting data externally.
 
-1. Open the `teams-auto-record-extension` folder.
-2. Zip the contents of that folder, not the repository root.
-3. Verify the ZIP includes `manifest.json` at the top level.
+No licensing implementation exists in this repository version. Lobby Access
+does not add a second licensing path or expose any backend secret.
 
-## Chrome Web Store Preparation
+## Tests and protected release
 
-Before submission:
+```sh
+npm test
+npm run build:protected
+npm run package:zip
+```
 
-1. Add production PNG icons to the `icons/` folder.
-2. Recheck permissions and keep them minimal.
-3. Validate the privacy copy in `PRIVACY.md`.
-4. Re-test against the current Teams UI.
-5. Package the extension folder contents with `manifest.json` at the root of the archive.
+Readable source remains under `teams-auto-record-extension/`. Protected output
+is generated in `dist/`, and the release ZIP is generated in `release/` without
+source maps or readable JavaScript source.
+
+## Known limitations
+
+- Only meetings currently rendered in the visible Calendar view are processed.
+- Teams is a dynamic application; loading delays may require retries.
+- Microsoft can change accessible labels, `data-tid` values, or dialog layout.
+- Tenant policy can limit whether a lobby value is available or accepted.
+- A protected build still requires manual Chrome and live Teams validation.

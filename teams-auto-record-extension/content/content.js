@@ -8,6 +8,7 @@
   const shared = globalThis.TeamsAutoRecordShared;
   const {
     MESSAGE_TYPES,
+    FEATURES,
     STATUS,
     DATE_LABEL_REGEX,
     TIME_RANGE_REGEX,
@@ -17,10 +18,14 @@
     matchesMeetingLabel,
     applyLimit,
     summarizeResults,
+    summarizeLobbyResults,
+    appendStoppedLobbyResults,
+    buildMeetingPlanFromDescriptors,
     formatError,
     isLikelyTeamsCalendarUrl,
     isSupportedTeamsUrl
   } = shared;
+  const lobbyAccess = globalThis.TeamsLobbyAccess;
 
   const runtime = {
     running: false,
@@ -30,6 +35,16 @@
     foundCount: 0,
     currentMeetingTitle: "",
     currentConfig: normalizeConfig(shared.DEFAULT_CONFIG)
+  };
+
+  const lobbyRuntime = {
+    running: false,
+    stopRequested: false,
+    results: [],
+    previewPlan: [],
+    foundCount: 0,
+    currentMeetingTitle: "",
+    currentConfig: normalizeConfig(shared.DEFAULT_LOBBY_CONFIG)
   };
 
   const sleep = ms =>
@@ -94,6 +109,40 @@
     const snapshot = buildSnapshot(overrides);
     chrome.runtime.sendMessage({
       source: "content",
+      type,
+      state: snapshot
+    });
+    return snapshot;
+  }
+
+  function buildLobbySnapshot(overrides) {
+    const counts = summarizeLobbyResults(
+      lobbyRuntime.results,
+      lobbyRuntime.foundCount
+    );
+
+    return Object.assign(
+      {
+        status: STATUS.IDLE,
+        running: lobbyRuntime.running,
+        stopRequested: lobbyRuntime.stopRequested,
+        currentMeetingTitle: lobbyRuntime.currentMeetingTitle,
+        previewPlan: lobbyRuntime.previewPlan.slice(),
+        results: lobbyRuntime.results.slice(),
+        counts,
+        progressPercentage: counts.progressPercentage,
+        warning: "",
+        lastError: ""
+      },
+      overrides || {}
+    );
+  }
+
+  function sendLobbyUpdate(type, overrides) {
+    const snapshot = buildLobbySnapshot(overrides);
+    chrome.runtime.sendMessage({
+      source: "content",
+      feature: FEATURES.LOBBY_ACCESS,
       type,
       state: snapshot
     });
@@ -299,27 +348,9 @@
   }
 
   function buildMeetingPlan(meetings) {
-    const occurrences = new Map();
-
-    return meetings.map((element, index) => {
-      const descriptor = getMeetingDescriptor(element);
-      const occurrence =
-        occurrences.get(descriptor.key) || 0;
-
-      occurrences.set(descriptor.key, occurrence + 1);
-
-      return {
-        number: index + 1,
-        key: descriptor.key,
-        occurrence,
-        title:
-          descriptor.title || `Meeting ${index + 1}`,
-        time:
-          descriptor.time || "Visible calendar time",
-        date:
-          descriptor.date || "Visible calendar date"
-      };
-    });
+    return buildMeetingPlanFromDescriptors(
+      meetings.map(getMeetingDescriptor)
+    );
   }
 
   function findPlannedMeeting(item, config) {
@@ -335,7 +366,8 @@
     finder,
     errorMessage,
     timeout,
-    interval
+    interval,
+    shouldStop
   ) {
     const startedAt = Date.now();
     const effectiveTimeout = timeout || 25000;
@@ -345,7 +377,11 @@
       Date.now() - startedAt <
       effectiveTimeout
     ) {
-      if (runtime.stopRequested) {
+      const stopRequested = shouldStop
+        ? shouldStop()
+        : runtime.stopRequested;
+
+      if (stopRequested) {
         throw new Error("Automation stopped manually");
       }
 
@@ -428,7 +464,9 @@
     });
   }
 
-  async function openMeetingOptions(meeting, config) {
+  async function openMeetingOptions(meeting, config, options) {
+    const settings = options || {};
+    const shouldStop = settings.shouldStop;
     meeting.click();
 
     const editButton = await waitFor(
@@ -452,7 +490,9 @@
           );
         }),
       "Edit button not found",
-      config.timeoutMs
+      config.timeoutMs,
+      undefined,
+      shouldStop
     );
 
     editButton.click();
@@ -468,20 +508,25 @@
           /online meeting options|change the online meeting options/i
         ),
       "Meeting options button not found",
-      config.timeoutMs
+      config.timeoutMs,
+      undefined,
+      shouldStop
     );
 
     optionsButton.click();
 
     return waitFor(
-      () =>
-        [
-          ...document.querySelectorAll(
-            '[data-tid="AutoRecordAndTranscribeMode"]'
-          )
-        ].find(visible),
-      "Auto-record dropdown not found",
-      config.timeoutMs
+      settings.readyFinder ||
+        (() =>
+          [
+            ...document.querySelectorAll(
+              '[data-tid="AutoRecordAndTranscribeMode"]'
+            )
+          ].find(visible)),
+      settings.readyError || "Auto-record dropdown not found",
+      config.timeoutMs,
+      undefined,
+      shouldStop
     );
   }
 
@@ -592,6 +637,12 @@
     if (runtime.running) {
       throw new Error(
         "Automation is already running."
+      );
+    }
+
+    if (lobbyRuntime.running) {
+      throw new Error(
+        "Lobby Access automation is already running."
       );
     }
 
@@ -761,6 +812,396 @@
     }
   }
 
+  async function previewLobbyMeetings(rawConfig) {
+    validateTeamsCalendarPage();
+
+    const config = normalizeConfig(rawConfig);
+    const meetings = applyLimit(
+      getMatchingMeetings(config),
+      config.limit
+    );
+    const plan = buildMeetingPlan(meetings);
+
+    lobbyRuntime.currentConfig = config;
+    lobbyRuntime.previewPlan = plan;
+    lobbyRuntime.results = [];
+    lobbyRuntime.foundCount = plan.length;
+    lobbyRuntime.currentMeetingTitle = "";
+
+    if (plan.length === 0) {
+      throw new Error(
+        "No matching Teams meetings were found."
+      );
+    }
+
+    const warning =
+      plan.length > 20
+        ? "More than 20 meetings match the current filters."
+        : "";
+    const snapshot = sendLobbyUpdate(
+      MESSAGE_TYPES.LOBBY_PROGRESS_UPDATE,
+      {
+        status: STATUS.PREVIEW_READY,
+        warning
+      }
+    );
+
+    return { plan, snapshot };
+  }
+
+  async function closeLobbyOptionsDialog(dialog, config) {
+    const closeButton = lobbyAccess.findCloseButton(
+      dialog,
+      visible
+    );
+
+    if (closeButton) {
+      closeButton.click();
+    } else {
+      pressEscape();
+    }
+
+    await waitFor(
+      () => !document.contains(dialog) || !visible(dialog),
+      "Dialog failed to close",
+      config.timeoutMs,
+      250,
+      () => false
+    );
+  }
+
+  async function setLobbyBypassToEveryone(dialog, config) {
+    const meetingAccessTab = lobbyAccess.findMeetingAccessTab(
+      dialog,
+      visible
+    );
+
+    if (!meetingAccessTab) {
+      throw new Error("Meeting access section missing");
+    }
+
+    if (
+      meetingAccessTab.getAttribute("aria-selected") !== "true"
+    ) {
+      meetingAccessTab.click();
+    }
+
+    const lobbyControl = await waitFor(
+      () => lobbyAccess.findLobbyControl(dialog, visible),
+      "Lobby bypass control not found",
+      config.timeoutMs,
+      250,
+      () => lobbyRuntime.stopRequested
+    );
+    const previousValue = lobbyAccess.readLobbyValue(lobbyControl);
+
+    if (!previousValue) {
+      throw new Error("Current lobby value unreadable");
+    }
+
+    if (shared.isEveryoneLobbyOption(previousValue)) {
+      await closeLobbyOptionsDialog(dialog, config);
+      return {
+        feature: shared.LOBBY_FEATURE_NAME,
+        previousValue,
+        newValue: shared.EVERYONE_VALUE,
+        status: "Already Everyone"
+      };
+    }
+
+    lobbyControl.click();
+
+    const everyoneOption = await waitFor(
+      () => lobbyAccess.findEveryoneOption(dialog, visible),
+      "Everyone option not found",
+      12000,
+      250,
+      () => lobbyRuntime.stopRequested
+    );
+
+    everyoneOption.click();
+
+    await waitFor(
+      () => {
+        const currentControl = lobbyAccess.findLobbyControl(
+          dialog,
+          visible
+        );
+        return (
+          currentControl &&
+          shared.isEveryoneLobbyOption(
+            lobbyAccess.readLobbyValue(currentControl)
+          )
+        );
+      },
+      "Could not confirm lobby value changed",
+      8000,
+      250,
+      () => lobbyRuntime.stopRequested
+    );
+
+    const applyButton = await waitFor(
+      () => {
+        const candidate = lobbyAccess.findApplyButton(
+          dialog,
+          visible
+        );
+        return lobbyAccess.isEnabledControl(candidate)
+          ? candidate
+          : null;
+      },
+      "Apply button remained disabled",
+      12000,
+      250,
+      () => lobbyRuntime.stopRequested
+    );
+
+    applyButton.click();
+
+    await waitFor(
+      () => !document.contains(dialog) || !visible(dialog),
+      "Apply failed or dialog failed to close",
+      12000,
+      250,
+      () => false
+    );
+
+    return {
+      feature: shared.LOBBY_FEATURE_NAME,
+      previousValue,
+      newValue: shared.EVERYONE_VALUE,
+      status: "Updated"
+    };
+  }
+
+  async function processLobbyMeeting(meeting, config) {
+    const dialog = await openMeetingOptions(meeting, config, {
+      shouldStop: () => lobbyRuntime.stopRequested,
+      readyFinder: () =>
+        lobbyAccess.findMeetingOptionsDialog(document, visible),
+      readyError: "Meeting access section missing"
+    });
+
+    return setLobbyBypassToEveryone(dialog, config);
+  }
+
+  function createLobbyResult(index, plannedMeeting, values) {
+    return Object.assign(
+      {
+        number: index + 1,
+        title: plannedMeeting.title,
+        date: plannedMeeting.date,
+        time: plannedMeeting.time,
+        feature: shared.LOBBY_FEATURE_NAME,
+        previousValue: "",
+        newValue: shared.EVERYONE_VALUE,
+        status: "Failed",
+        error: ""
+      },
+      values || {}
+    );
+  }
+
+  async function runLobbyAutomation(rawConfig) {
+    validateTeamsCalendarPage();
+
+    if (lobbyRuntime.running) {
+      throw new Error(
+        "Lobby Access automation is already running."
+      );
+    }
+
+    if (runtime.running) {
+      throw new Error(
+        "Auto Recording automation is already running."
+      );
+    }
+
+    const config = normalizeConfig(rawConfig);
+    lobbyRuntime.currentConfig = config;
+    lobbyRuntime.stopRequested = false;
+    lobbyRuntime.running = true;
+    lobbyRuntime.results = [];
+    lobbyRuntime.currentMeetingTitle = "";
+
+    try {
+      const preview = await previewLobbyMeetings(config);
+      lobbyRuntime.previewPlan = preview.plan;
+      lobbyRuntime.foundCount = preview.plan.length;
+
+      if (config.previewOnly) {
+        lobbyRuntime.running = false;
+        sendLobbyUpdate(
+          MESSAGE_TYPES.LOBBY_AUTOMATION_COMPLETE,
+          {
+            status: STATUS.PREVIEW_READY,
+            running: false,
+            warning:
+              "Preview-only mode is enabled. No meetings were changed."
+          }
+        );
+        return;
+      }
+
+      sendLobbyUpdate(MESSAGE_TYPES.LOBBY_PROGRESS_UPDATE, {
+        status: STATUS.RUNNING,
+        running: true,
+        warning:
+          lobbyRuntime.foundCount > 20
+            ? "More than 20 meetings are being processed."
+            : ""
+      });
+
+      for (
+        let index = 0;
+        index < lobbyRuntime.previewPlan.length;
+        index += 1
+      ) {
+        if (lobbyRuntime.stopRequested) {
+          lobbyRuntime.results = appendStoppedLobbyResults(
+            lobbyRuntime.previewPlan,
+            lobbyRuntime.results,
+            index
+          );
+          break;
+        }
+
+        const plannedMeeting = lobbyRuntime.previewPlan[index];
+        let completed = false;
+        let lastError = "";
+
+        lobbyRuntime.currentMeetingTitle = plannedMeeting.title;
+        sendLobbyUpdate(MESSAGE_TYPES.LOBBY_PROGRESS_UPDATE, {
+          status: STATUS.RUNNING,
+          running: true
+        });
+
+        for (
+          let attempt = 0;
+          attempt <= config.retriesPerMeeting;
+          attempt += 1
+        ) {
+          try {
+            const meeting = await waitFor(
+              () => findPlannedMeeting(plannedMeeting, config),
+              `Meeting not found: ${plannedMeeting.title}`,
+              config.timeoutMs,
+              undefined,
+              () => lobbyRuntime.stopRequested
+            );
+            const result = await processLobbyMeeting(
+              meeting,
+              config
+            );
+
+            lobbyRuntime.results.push(
+              createLobbyResult(index, plannedMeeting, result)
+            );
+            await returnToCalendar();
+            completed = true;
+            sendLobbyUpdate(
+              MESSAGE_TYPES.LOBBY_PROGRESS_UPDATE,
+              {
+                status: STATUS.RUNNING,
+                running: true
+              }
+            );
+            break;
+          } catch (error) {
+            lastError = formatError(error);
+            await returnToCalendar();
+
+            if (isStopError(error)) {
+              break;
+            }
+
+            if (attempt < config.retriesPerMeeting) {
+              await sleep(2000);
+            }
+          }
+        }
+
+        if (!completed) {
+          if (lobbyRuntime.stopRequested) {
+            lobbyRuntime.results = appendStoppedLobbyResults(
+              lobbyRuntime.previewPlan,
+              lobbyRuntime.results,
+              index
+            );
+          } else {
+            lobbyRuntime.results.push(
+              createLobbyResult(index, plannedMeeting, {
+                status: "Failed",
+                error: lastError || "Meeting processing failed"
+              })
+            );
+          }
+
+          sendLobbyUpdate(
+            MESSAGE_TYPES.LOBBY_PROGRESS_UPDATE,
+            {
+              status: STATUS.RUNNING,
+              running: true,
+              lastError
+            }
+          );
+        }
+
+        if (lobbyRuntime.stopRequested) {
+          break;
+        }
+
+        if (
+          config.pauseEvery > 0 &&
+          (index + 1) % config.pauseEvery === 0 &&
+          index + 1 < lobbyRuntime.previewPlan.length
+        ) {
+          await sleep(config.pauseDurationMs);
+        } else {
+          await sleep(config.delayBetweenMeetingsMs);
+        }
+      }
+
+      lobbyRuntime.running = false;
+      lobbyRuntime.currentMeetingTitle = "";
+
+      if (lobbyRuntime.stopRequested) {
+        sendLobbyUpdate(
+          MESSAGE_TYPES.LOBBY_AUTOMATION_COMPLETE,
+          {
+            status: STATUS.STOPPED,
+            running: false,
+            warning: "Lobby Access was stopped by the user."
+          }
+        );
+        return;
+      }
+
+      sendLobbyUpdate(
+        MESSAGE_TYPES.LOBBY_AUTOMATION_COMPLETE,
+        {
+          status: STATUS.COMPLETE,
+          running: false
+        }
+      );
+    } catch (error) {
+      lobbyRuntime.running = false;
+      lobbyRuntime.currentMeetingTitle = "";
+      sendLobbyUpdate(MESSAGE_TYPES.LOBBY_AUTOMATION_ERROR, {
+        status: isStopError(error)
+          ? STATUS.STOPPED
+          : STATUS.ERROR,
+        running: false,
+        lastError: formatError(error),
+        warning: isStopError(error)
+          ? "Lobby Access was stopped by the user."
+          : ""
+      });
+    } finally {
+      lobbyRuntime.stopRequested = false;
+    }
+  }
+
   chrome.runtime.onMessage.addListener(
     (message, sender, sendResponse) => {
       if (!message?.type) {
@@ -784,6 +1225,20 @@
         sendUpdate(MESSAGE_TYPES.PROGRESS_UPDATE, {
           status: STATUS.STOPPING,
           running: runtime.running,
+          warning:
+            "Stop requested. Waiting for the current step to finish."
+        });
+        sendResponse({ ok: true });
+        return false;
+      }
+
+      if (
+        message.type === MESSAGE_TYPES.STOP_LOBBY_AUTOMATION
+      ) {
+        lobbyRuntime.stopRequested = true;
+        sendLobbyUpdate(MESSAGE_TYPES.LOBBY_PROGRESS_UPDATE, {
+          status: STATUS.STOPPING,
+          running: lobbyRuntime.running,
           warning:
             "Stop requested. Waiting for the current step to finish."
         });
@@ -834,6 +1289,60 @@
         }
 
         runAutomation(message.config);
+        sendResponse({ ok: true });
+        return false;
+      }
+
+      if (
+        message.type === MESSAGE_TYPES.PREVIEW_LOBBY_MEETINGS
+      ) {
+        if (!isSupportedCalendarFrame()) {
+          sendResponse({
+            ok: false,
+            errorCode: "UNSUPPORTED_CONTEXT",
+            error: "This frame is not the Teams calendar content."
+          });
+          return false;
+        }
+
+        previewLobbyMeetings(message.config)
+          .then(result => {
+            sendResponse({
+              ok: true,
+              plan: result.plan,
+              snapshot: result.snapshot
+            });
+          })
+          .catch(error => {
+            sendLobbyUpdate(
+              MESSAGE_TYPES.LOBBY_AUTOMATION_ERROR,
+              {
+                status: STATUS.ERROR,
+                running: false,
+                lastError: formatError(error)
+              }
+            );
+            sendResponse({
+              ok: false,
+              error: formatError(error)
+            });
+          });
+        return true;
+      }
+
+      if (
+        message.type === MESSAGE_TYPES.START_LOBBY_AUTOMATION
+      ) {
+        if (!isSupportedCalendarFrame()) {
+          sendResponse({
+            ok: false,
+            errorCode: "UNSUPPORTED_CONTEXT",
+            error: "This frame is not the Teams calendar content."
+          });
+          return false;
+        }
+
+        runLobbyAutomation(message.config);
         sendResponse({ ok: true });
         return false;
       }

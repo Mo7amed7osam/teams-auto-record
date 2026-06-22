@@ -69,10 +69,14 @@ integer format, then rebuild. A patch release changes `0.1.0` to `0.1.1`.
 2. Open `chrome://extensions` and enable Developer mode.
 3. Choose **Load unpacked** and select the repository-level `dist/` directory.
 4. Open the Teams web calendar and confirm preview filters, duplicate meetings,
-   live automation, stop, local progress, and CSV export.
-5. Confirm automation only changes the automatic recording and transcription
-   setting and never joins, deletes, or reschedules a meeting.
-6. Inspect the extension service worker and popup console for CSP or runtime
+   feature tabs, local progress, Stop, and both CSV exports.
+5. Run Auto Recording with a limit of one and confirm only automatic recording
+   and transcription changes.
+6. Run Lobby Access with a limit of one and confirm only `Who can bypass the
+   lobby?` changes to `Everyone`.
+7. Test a meeting already set to Everyone and confirm `Already Everyone`.
+8. Confirm neither feature joins, deletes, cancels, or reschedules a meeting.
+9. Inspect the extension service worker and popup console for CSP or runtime
    errors.
 
 ## Security limits

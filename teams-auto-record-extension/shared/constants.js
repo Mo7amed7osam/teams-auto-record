@@ -8,12 +8,27 @@
     PROGRESS_UPDATE: "PROGRESS_UPDATE",
     AUTOMATION_COMPLETE: "AUTOMATION_COMPLETE",
     AUTOMATION_ERROR: "AUTOMATION_ERROR",
-    STATE_UPDATED: "STATE_UPDATED"
+    STATE_UPDATED: "STATE_UPDATED",
+    PREVIEW_LOBBY_MEETINGS: "PREVIEW_LOBBY_MEETINGS",
+    START_LOBBY_AUTOMATION: "START_LOBBY_AUTOMATION",
+    STOP_LOBBY_AUTOMATION: "STOP_LOBBY_AUTOMATION",
+    CLEAR_LOBBY_RESULTS: "CLEAR_LOBBY_RESULTS",
+    LOBBY_PROGRESS_UPDATE: "LOBBY_PROGRESS_UPDATE",
+    LOBBY_AUTOMATION_COMPLETE: "LOBBY_AUTOMATION_COMPLETE",
+    LOBBY_AUTOMATION_ERROR: "LOBBY_AUTOMATION_ERROR",
+    LOBBY_STATE_UPDATED: "LOBBY_STATE_UPDATED"
   };
 
   const STORAGE_KEYS = {
     CONFIG: "teamsAutoRecordConfig",
-    STATE: "teamsAutoRecordState"
+    STATE: "teamsAutoRecordState",
+    LOBBY_CONFIG: "teamsLobbyAccessConfig",
+    LOBBY_STATE: "teamsLobbyAccessState"
+  };
+
+  const FEATURES = {
+    AUTO_RECORDING: "auto-recording",
+    LOBBY_ACCESS: "lobby-access"
   };
 
   const STATUS = {
@@ -53,6 +68,14 @@
     timeoutMs: 25000
   };
 
+  const DEFAULT_LOBBY_CONFIG = Object.assign(
+    {},
+    DEFAULT_CONFIG,
+    {
+      desiredLobbyValue: "Everyone"
+    }
+  );
+
   const REPORT_COLUMNS = [
     "number",
     "title",
@@ -86,14 +109,42 @@
     };
   }
 
+  function cloneDefaultLobbyState() {
+    return {
+      status: STATUS.IDLE,
+      running: false,
+      stopRequested: false,
+      activeTabId: null,
+      activeFrameId: null,
+      currentMeetingTitle: "",
+      previewPlan: [],
+      results: [],
+      counts: {
+        found: 0,
+        processed: 0,
+        updated: 0,
+        alreadyEveryone: 0,
+        failed: 0,
+        stopped: 0
+      },
+      progressPercentage: 0,
+      warning: "",
+      lastError: "",
+      lastUpdatedAt: null
+    };
+  }
+
   const api = {
     MESSAGE_TYPES,
     STORAGE_KEYS,
+    FEATURES,
     STATUS,
     STATUS_LABELS,
     DEFAULT_CONFIG,
+    DEFAULT_LOBBY_CONFIG,
     REPORT_COLUMNS,
-    cloneDefaultState
+    cloneDefaultState,
+    cloneDefaultLobbyState
   };
 
   root.TeamsAutoRecordShared = Object.assign(

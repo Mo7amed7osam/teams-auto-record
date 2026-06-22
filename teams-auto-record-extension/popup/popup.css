@@ -47,6 +47,31 @@ body {
     var(--panel);
 }
 
+.feature-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 5px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #dfe9e2;
+}
+
+.feature-tab {
+  padding: 10px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+}
+
+.feature-tab.active {
+  background: var(--panel);
+  color: var(--accent);
+  box-shadow: 0 3px 10px rgba(22, 35, 26, 0.1);
+}
+
 .eyebrow {
   margin: 0 0 4px;
   color: var(--accent);
@@ -133,6 +158,15 @@ button:focus {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin-top: 12px;
+}
+
+.action-target {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border: 1px solid #b8d9c7;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .button-row.secondary {

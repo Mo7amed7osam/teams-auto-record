@@ -337,6 +337,25 @@
     return [header].concat(rows).join("\n");
   }
 
+  function buildMeetingPlanFromDescriptors(descriptors) {
+    const occurrences = new Map();
+
+    return descriptors.map((descriptor, index) => {
+      const key = descriptor.key || descriptor.title || `meeting-${index}`;
+      const occurrence = occurrences.get(key) || 0;
+      occurrences.set(key, occurrence + 1);
+
+      return {
+        number: index + 1,
+        key,
+        occurrence,
+        title: descriptor.title || `Meeting ${index + 1}`,
+        time: descriptor.time || "Visible calendar time",
+        date: descriptor.date || "Visible calendar date"
+      };
+    });
+  }
+
   function isLikelyTeamsCalendarUrl(url) {
     const normalized = String(url || "").toLowerCase();
     return (
@@ -382,7 +401,9 @@
     matchesMeetingLabel,
     applyLimit,
     summarizeResults,
+    csvEscape,
     buildCsv,
+    buildMeetingPlanFromDescriptors,
     isLikelyTeamsCalendarUrl,
     isSupportedTeamsUrl,
     formatError

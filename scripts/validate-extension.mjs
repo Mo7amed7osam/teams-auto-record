@@ -146,13 +146,25 @@ function smokeTestProtectedSharedCode() {
     "shared/constants.js"
   );
   const utilsPath = path.join(distDirectory, "shared/utils.js");
+  const lobbyUtilsPath = path.join(
+    distDirectory,
+    "shared/lobby-utils.js"
+  );
+  const lobbyAccessPath = path.join(
+    distDirectory,
+    "content/lobby-access.js"
+  );
 
   delete require.cache[require.resolve(constantsPath)];
   delete require.cache[require.resolve(utilsPath)];
+  delete require.cache[require.resolve(lobbyUtilsPath)];
+  delete require.cache[require.resolve(lobbyAccessPath)];
   delete globalThis.TeamsAutoRecordShared;
 
   require(constantsPath);
-  const shared = require(utilsPath);
+  require(utilsPath);
+  const shared = require(lobbyUtilsPath);
+  const lobbyAccess = require(lobbyAccessPath);
   const config = shared.normalizeConfig({
     targetDate: "2026-06-23",
     startTime: "2:00 PM",
@@ -169,6 +181,22 @@ function smokeTestProtectedSharedCode() {
       config
     ),
     true
+  );
+  assert.equal(
+    shared.MESSAGE_TYPES.START_LOBBY_AUTOMATION,
+    "START_LOBBY_AUTOMATION"
+  );
+  assert.equal(
+    shared.STORAGE_KEYS.LOBBY_STATE,
+    "teamsLobbyAccessState"
+  );
+  assert.match(
+    lobbyAccess.SELECTORS.LOBBY_CONTROL,
+    /AutoAdmittedUsers/
+  );
+  assert.equal(
+    lobbyAccess.SELECTORS.EVERYONE_OPTION,
+    '[role="option"][data-tid="Everyone"]'
   );
 }
 

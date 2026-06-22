@@ -3,19 +3,81 @@
   const {
     MESSAGE_TYPES,
     STORAGE_KEYS,
+    FEATURES,
     STATUS,
     STATUS_LABELS,
     DEFAULT_CONFIG,
+    DEFAULT_LOBBY_CONFIG,
+    cloneDefaultState,
+    cloneDefaultLobbyState,
     normalizeConfig,
-    buildCsv
+    buildCsv,
+    buildLobbyCsv
   } = shared;
 
+  const featureSettings = {
+    [FEATURES.AUTO_RECORDING]: {
+      tabId: "autoRecordingTab",
+      storageKey: STORAGE_KEYS.CONFIG,
+      defaultConfig: DEFAULT_CONFIG,
+      previewMessage: MESSAGE_TYPES.PREVIEW_MEETINGS,
+      startMessage: MESSAGE_TYPES.START_AUTOMATION,
+      stopMessage: MESSAGE_TYPES.STOP_AUTOMATION,
+      clearMessage: MESSAGE_TYPES.CLEAR_RESULTS,
+      updatedMessage: MESSAGE_TYPES.STATE_UPDATED,
+      subtitle:
+        "Preview meetings first, then update only automatic recording and transcription.",
+      startLabel: "Start auto recording",
+      alreadyLabel: "Already enabled",
+      alreadyCountKey: "alreadyEnabled",
+      filename: "teams-auto-record-report.csv",
+      buildReport: buildCsv
+    },
+    [FEATURES.LOBBY_ACCESS]: {
+      tabId: "lobbyAccessTab",
+      storageKey: STORAGE_KEYS.LOBBY_CONFIG,
+      defaultConfig: DEFAULT_LOBBY_CONFIG,
+      previewMessage: MESSAGE_TYPES.PREVIEW_LOBBY_MEETINGS,
+      startMessage: MESSAGE_TYPES.START_LOBBY_AUTOMATION,
+      stopMessage: MESSAGE_TYPES.STOP_LOBBY_AUTOMATION,
+      clearMessage: MESSAGE_TYPES.CLEAR_LOBBY_RESULTS,
+      updatedMessage: MESSAGE_TYPES.LOBBY_STATE_UPDATED,
+      subtitle:
+        "Preview meetings first, then change only who can bypass the lobby.",
+      startLabel: "Start lobby access",
+      alreadyLabel: "Already Everyone",
+      alreadyCountKey: "alreadyEveryone",
+      filename: "teams-lobby-access-report.csv",
+      buildReport: buildLobbyCsv
+    }
+  };
+
   const elements = {};
+  const configs = {
+    [FEATURES.AUTO_RECORDING]: Object.assign({}, DEFAULT_CONFIG),
+    [FEATURES.LOBBY_ACCESS]: Object.assign(
+      {},
+      DEFAULT_LOBBY_CONFIG
+    )
+  };
+  const states = {
+    [FEATURES.AUTO_RECORDING]: cloneDefaultState(),
+    [FEATURES.LOBBY_ACCESS]: cloneDefaultLobbyState()
+  };
+
+  let activeFeature = FEATURES.AUTO_RECORDING;
   let uiBusy = false;
-  let lastState = null;
 
   function byId(id) {
     return document.getElementById(id);
+  }
+
+  function activeSettings() {
+    return featureSettings[activeFeature];
+  }
+
+  function activeState() {
+    return states[activeFeature];
   }
 
   function getLimitSelection(config) {
@@ -24,39 +86,34 @@
     }
 
     if (typeof config.limit === "number") {
-      return {
-        mode: "custom",
-        count: String(config.limit)
-      };
+      return { mode: "custom", count: String(config.limit) };
     }
 
     return { mode: "all", count: "" };
   }
 
   function applyConfig(config) {
-    const merged = Object.assign({}, DEFAULT_CONFIG, config);
+    const merged = Object.assign(
+      {},
+      activeSettings().defaultConfig,
+      config
+    );
     const limitSelection = getLimitSelection(merged);
 
     elements.targetDate.value = merged.targetDate || "";
     elements.startTime.value = merged.startTime;
     elements.endTime.value = merged.endTime;
-    elements.titleIncludes.value =
-      merged.titleIncludes || "";
-    elements.titleExcludes.value =
-      merged.titleExcludes || "";
+    elements.titleIncludes.value = merged.titleIncludes || "";
+    elements.titleExcludes.value = merged.titleExcludes || "";
     elements.limitMode.value = limitSelection.mode;
     elements.limitCount.value = limitSelection.count;
-    elements.previewOnly.checked =
-      Boolean(merged.previewOnly);
-    elements.retriesPerMeeting.value =
-      merged.retriesPerMeeting;
+    elements.previewOnly.checked = Boolean(merged.previewOnly);
+    elements.retriesPerMeeting.value = merged.retriesPerMeeting;
     elements.delayBetweenMeetingsMs.value =
       merged.delayBetweenMeetingsMs;
     elements.pauseEvery.value = merged.pauseEvery;
-    elements.pauseDurationMs.value =
-      merged.pauseDurationMs;
+    elements.pauseDurationMs.value = merged.pauseDurationMs;
     elements.timeoutMs.value = merged.timeoutMs;
-
     toggleCustomLimit();
   }
 
@@ -67,10 +124,7 @@
     if (limitMode === "3") {
       limit = 3;
     } else if (limitMode === "custom") {
-      limit = Number.parseInt(
-        elements.limitCount.value,
-        10
-      );
+      limit = Number.parseInt(elements.limitCount.value, 10);
       if (!Number.isFinite(limit) || limit <= 0) {
         limit = null;
       }
@@ -92,32 +146,31 @@
         elements.delayBetweenMeetingsMs.value,
         10
       ),
-      pauseEvery: Number.parseInt(
-        elements.pauseEvery.value,
-        10
-      ),
+      pauseEvery: Number.parseInt(elements.pauseEvery.value, 10),
       pauseDurationMs: Number.parseInt(
         elements.pauseDurationMs.value,
         10
       ),
-      timeoutMs: Number.parseInt(
-        elements.timeoutMs.value,
-        10
-      )
+      timeoutMs: Number.parseInt(elements.timeoutMs.value, 10),
+      desiredLobbyValue:
+        activeFeature === FEATURES.LOBBY_ACCESS
+          ? shared.EVERYONE_VALUE
+          : undefined
     };
   }
 
   async function saveConfig() {
     const config = readConfigFromForm();
+    configs[activeFeature] = config;
     await chrome.storage.local.set({
-      [STORAGE_KEYS.CONFIG]: config
+      [activeSettings().storageKey]: config
     });
     return config;
   }
 
-  function setFeedback(target, message) {
-    target.textContent = message || "";
-    target.classList.toggle("show", Boolean(message));
+  function setFeedback(element, text) {
+    element.textContent = text || "";
+    element.classList.toggle("show", Boolean(text));
   }
 
   function clearMessages() {
@@ -126,28 +179,26 @@
     setFeedback(elements.error, "");
   }
 
+  function anyAutomationRunning() {
+    return Object.values(states).some(state => state.running);
+  }
+
   function updateActionState() {
-    const running = Boolean(lastState?.running);
-    elements.previewButton.disabled =
-      uiBusy || running;
-    elements.startButton.disabled =
-      uiBusy || running;
-    elements.stopButton.disabled =
-      uiBusy || !running;
-    elements.clearButton.disabled = uiBusy || running;
+    const running = Boolean(activeState()?.running);
+    const anyRunning = anyAutomationRunning();
+
+    elements.previewButton.disabled = uiBusy || anyRunning;
+    elements.startButton.disabled = uiBusy || anyRunning;
+    elements.stopButton.disabled = uiBusy || !running;
+    elements.clearButton.disabled = uiBusy || anyRunning;
     elements.exportButton.disabled =
-      uiBusy ||
-      !lastState ||
-      !lastState.results ||
-      lastState.results.length === 0;
+      uiBusy || !activeState()?.results?.length;
   }
 
   function toggleCustomLimit() {
-    const custom =
-      elements.limitMode.value === "custom";
     elements.limitCountWrap.classList.toggle(
       "hidden",
-      !custom
+      elements.limitMode.value !== "custom"
     );
   }
 
@@ -160,8 +211,7 @@
       const row = document.createElement("tr");
       const cell = document.createElement("td");
       cell.colSpan = 6;
-      cell.textContent =
-        "No preview or automation results yet.";
+      cell.textContent = "No preview or automation results yet.";
       row.appendChild(cell);
       elements.reportBody.appendChild(row);
       return;
@@ -186,60 +236,63 @@
   }
 
   function renderState(state) {
-    lastState = state || lastState || {
-      status: STATUS.IDLE,
-      counts: {
-        found: 0,
-        processed: 0,
-        updated: 0,
-        alreadyEnabled: 0,
-        failed: 0
-      },
-      results: []
-    };
+    const current = state || activeState();
+    const settings = activeSettings();
+    const counts = current.counts || {};
+    const progress = current.progressPercentage ?? 0;
 
+    states[activeFeature] = current;
     elements.statusBadge.textContent =
-      STATUS_LABELS[lastState.status] ||
-      STATUS_LABELS[STATUS.IDLE];
-    elements.meetingsFound.textContent =
-      lastState.counts?.found ?? 0;
-    elements.meetingsProcessed.textContent =
-      lastState.counts?.processed ?? 0;
-    elements.updatedCount.textContent =
-      lastState.counts?.updated ?? 0;
+      STATUS_LABELS[current.status] || STATUS_LABELS[STATUS.IDLE];
+    elements.meetingsFound.textContent = counts.found ?? 0;
+    elements.meetingsProcessed.textContent = counts.processed ?? 0;
+    elements.updatedCount.textContent = counts.updated ?? 0;
     elements.alreadyEnabledCount.textContent =
-      lastState.counts?.alreadyEnabled ?? 0;
-    elements.failedCount.textContent =
-      lastState.counts?.failed ?? 0;
+      counts[settings.alreadyCountKey] ?? 0;
+    elements.failedCount.textContent = counts.failed ?? 0;
     elements.currentMeeting.textContent =
-      lastState.currentMeetingTitle || "None";
-
-    const progress =
-      lastState.progressPercentage ?? 0;
+      current.currentMeetingTitle || "None";
     elements.progressText.textContent = `${progress}%`;
     elements.progressFill.style.width = `${progress}%`;
     elements.progressTrack.setAttribute(
       "aria-valuenow",
       String(progress)
     );
-
-    setFeedback(elements.warning, lastState.warning);
-    setFeedback(elements.error, lastState.lastError);
-    renderReport(lastState.results || []);
+    setFeedback(elements.warning, current.warning);
+    setFeedback(elements.error, current.lastError);
+    renderReport(current.results || []);
     updateActionState();
   }
 
-  async function sendMessage(message) {
-    const response = await chrome.runtime.sendMessage(
-      message
+  function renderFeature() {
+    const settings = activeSettings();
+    const isLobby = activeFeature === FEATURES.LOBBY_ACCESS;
+
+    Object.entries(featureSettings).forEach(([feature, item]) => {
+      const tab = byId(item.tabId);
+      const selected = feature === activeFeature;
+      tab.classList.toggle("active", selected);
+      tab.setAttribute("aria-selected", String(selected));
+    });
+
+    elements.featurePanel.setAttribute(
+      "aria-labelledby",
+      settings.tabId
     );
+    elements.featureSubtitle.textContent = settings.subtitle;
+    elements.startButton.textContent = settings.startLabel;
+    elements.alreadyCountLabel.textContent = settings.alreadyLabel;
+    elements.desiredAction.classList.toggle("hidden", !isLobby);
+    applyConfig(configs[activeFeature]);
+    clearMessages();
+    renderState(states[activeFeature]);
+  }
 
+  async function sendMessage(message) {
+    const response = await chrome.runtime.sendMessage(message);
     if (!response?.ok) {
-      throw new Error(
-        response?.error || "Request failed."
-      );
+      throw new Error(response?.error || "Request failed.");
     }
-
     return response;
   }
 
@@ -247,8 +300,15 @@
     const response = await sendMessage({
       type: MESSAGE_TYPES.GET_STATE
     });
-    applyConfig(response.config || DEFAULT_CONFIG);
-    renderState(response.state);
+    configs[FEATURES.AUTO_RECORDING] =
+      response.config || DEFAULT_CONFIG;
+    configs[FEATURES.LOBBY_ACCESS] =
+      response.lobbyConfig || DEFAULT_LOBBY_CONFIG;
+    states[FEATURES.AUTO_RECORDING] =
+      response.state || cloneDefaultState();
+    states[FEATURES.LOBBY_ACCESS] =
+      response.lobbyState || cloneDefaultLobbyState();
+    renderFeature();
   }
 
   async function handlePreview() {
@@ -259,14 +319,12 @@
     try {
       const config = await saveConfig();
       const response = await sendMessage({
-        type: MESSAGE_TYPES.PREVIEW_MEETINGS,
+        type: activeSettings().previewMessage,
         config
       });
-      renderState(
-        response.snapshot ||
-          response.state ||
-          lastState
-      );
+      states[activeFeature] =
+        response.snapshot || states[activeFeature];
+      renderState(states[activeFeature]);
       setFeedback(
         elements.message,
         `Preview found ${response.plan.length} matching meetings.`
@@ -290,10 +348,12 @@
 
       if (!config.previewOnly) {
         const preview = await sendMessage({
-          type: MESSAGE_TYPES.PREVIEW_MEETINGS,
+          type: activeSettings().previewMessage,
           config: rawConfig
         });
-        renderState(preview.snapshot || lastState);
+        states[activeFeature] =
+          preview.snapshot || states[activeFeature];
+        renderState(states[activeFeature]);
 
         const found = preview.plan.length;
         if (found === 0) {
@@ -304,12 +364,16 @@
           return;
         }
 
+        const action =
+          activeFeature === FEATURES.LOBBY_ACCESS
+            ? "set lobby bypass to Everyone"
+            : "enable automatic recording and transcription";
         const warningLine =
           found > 20
             ? `\nWarning: ${found} meetings will be processed.`
             : "";
         const confirmed = window.confirm(
-          `Preview found ${found} matching meetings.${warningLine}\n\nContinue with live changes?`
+          `Preview found ${found} matching meetings.${warningLine}\n\nContinue and ${action}?`
         );
 
         if (!confirmed) {
@@ -322,10 +386,9 @@
       }
 
       await sendMessage({
-        type: MESSAGE_TYPES.START_AUTOMATION,
+        type: activeSettings().startMessage,
         config: rawConfig
       });
-
       setFeedback(
         elements.message,
         config.previewOnly
@@ -347,13 +410,8 @@
     updateActionState();
 
     try {
-      await sendMessage({
-        type: MESSAGE_TYPES.STOP_AUTOMATION
-      });
-      setFeedback(
-        elements.message,
-        "Stop requested."
-      );
+      await sendMessage({ type: activeSettings().stopMessage });
+      setFeedback(elements.message, "Stop requested.");
       await refreshState();
     } catch (error) {
       setFeedback(elements.error, error.message);
@@ -370,13 +428,11 @@
 
     try {
       const response = await sendMessage({
-        type: MESSAGE_TYPES.CLEAR_RESULTS
+        type: activeSettings().clearMessage
       });
+      states[activeFeature] = response.state;
       renderState(response.state);
-      setFeedback(
-        elements.message,
-        "Report cleared."
-      );
+      setFeedback(elements.message, "Report cleared.");
     } catch (error) {
       setFeedback(elements.error, error.message);
     } finally {
@@ -386,7 +442,8 @@
   }
 
   function handleExport() {
-    if (!lastState?.results?.length) {
+    const results = activeState()?.results || [];
+    if (results.length === 0) {
       setFeedback(
         elements.error,
         "There are no results to export."
@@ -394,22 +451,18 @@
       return;
     }
 
-    const csv = buildCsv(lastState.results);
+    const settings = activeSettings();
+    const csv = settings.buildReport(results);
     const blob = new Blob([csv], {
       type: "text/csv;charset=utf-8"
     });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-
     link.href = url;
-    link.download = "teams-auto-record-report.csv";
+    link.download = settings.filename;
     link.click();
-
     URL.revokeObjectURL(url);
-    setFeedback(
-      elements.message,
-      "CSV export downloaded."
-    );
+    setFeedback(elements.message, "CSV export downloaded.");
   }
 
   function bindInputs() {
@@ -437,6 +490,10 @@
 
   function captureElements() {
     [
+      "featurePanel",
+      "featureSubtitle",
+      "desiredAction",
+      "alreadyCountLabel",
       "targetDate",
       "startTime",
       "endTime",
@@ -477,31 +534,34 @@
   }
 
   function bindButtons() {
-    elements.previewButton.addEventListener(
-      "click",
-      handlePreview
-    );
-    elements.startButton.addEventListener(
-      "click",
-      handleStart
-    );
-    elements.stopButton.addEventListener(
-      "click",
-      handleStop
-    );
-    elements.clearButton.addEventListener(
-      "click",
-      handleClear
-    );
-    elements.exportButton.addEventListener(
-      "click",
-      handleExport
-    );
+    elements.previewButton.addEventListener("click", handlePreview);
+    elements.startButton.addEventListener("click", handleStart);
+    elements.stopButton.addEventListener("click", handleStop);
+    elements.clearButton.addEventListener("click", handleClear);
+    elements.exportButton.addEventListener("click", handleExport);
+
+    document.querySelectorAll("[data-feature]").forEach(tab => {
+      tab.addEventListener("click", () => {
+        activeFeature = tab.dataset.feature;
+        renderFeature();
+      });
+    });
   }
 
   chrome.runtime.onMessage.addListener(message => {
-    if (message?.type === MESSAGE_TYPES.STATE_UPDATED) {
+    const feature = Object.entries(featureSettings).find(
+      ([, settings]) => settings.updatedMessage === message?.type
+    )?.[0];
+
+    if (!feature) {
+      return;
+    }
+
+    states[feature] = message.state;
+    if (feature === activeFeature) {
       renderState(message.state);
+    } else {
+      updateActionState();
     }
   });
 

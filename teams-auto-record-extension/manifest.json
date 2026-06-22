@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Teams Auto Record",
-  "version": "0.1.0",
-  "description": "Preview and enable automatic recording and transcription for matching Microsoft Teams Web meetings.",
+  "version": "0.1.1",
+  "description": "Safely automate recording and lobby access settings for matching Microsoft Teams Web meetings.",
   "permissions": [
     "activeTab",
     "tabs",
@@ -33,6 +33,8 @@
       "js": [
         "shared/constants.js",
         "shared/utils.js",
+        "shared/lobby-utils.js",
+        "content/lobby-access.js",
         "content/content.js"
       ],
       "run_at": "document_idle"

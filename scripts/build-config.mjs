@@ -16,7 +16,9 @@ export const javascriptFiles = [
   "content/content.js",
   "background/service-worker.js",
   "shared/constants.js",
-  "shared/utils.js"
+  "shared/utils.js",
+  "shared/lobby-utils.js",
+  "content/lobby-access.js"
 ];
 
 export const staticFiles = [
@@ -37,10 +39,25 @@ export const criticalStrings = [
   "AUTOMATION_COMPLETE",
   "AUTOMATION_ERROR",
   "STATE_UPDATED",
+  "PREVIEW_LOBBY_MEETINGS",
+  "START_LOBBY_AUTOMATION",
+  "STOP_LOBBY_AUTOMATION",
+  "CLEAR_LOBBY_RESULTS",
+  "LOBBY_PROGRESS_UPDATE",
+  "LOBBY_AUTOMATION_COMPLETE",
+  "LOBBY_AUTOMATION_ERROR",
+  "LOBBY_STATE_UPDATED",
   "AutoRecordAndTranscribeMode",
   "AutoRecordingAndTranscription",
   "[data-tid=\"AutoRecordAndTranscribeMode\"]",
   "[data-tid=\"AutoRecordingAndTranscription\"]",
+  "[data-tid=\"AutoAdmittedUsers\"][role=\"combobox\"]",
+  "#AutoAdmittedUsers[role=\"combobox\"]",
+  "[role=\"combobox\"][aria-label=\"Who can bypass the lobby?\"]",
+  "[role=\"option\"][data-tid=\"Everyone\"]",
+  "Who can bypass the lobby?",
+  "Everyone",
+  "Meeting access",
   "button[aria-label*=\"online meeting options\"], button[title*=\"online meeting options\"]",
   "Edit",
   "Apply",
@@ -50,8 +67,12 @@ export const criticalStrings = [
   "outlook.office.com",
   "teamsAutoRecordConfig",
   "teamsAutoRecordState",
+  "teamsLobbyAccessConfig",
+  "teamsLobbyAccessState",
   "shared/constants.js",
   "shared/utils.js",
+  "shared/lobby-utils.js",
+  "content/lobby-access.js",
   "content/content.js"
 ];
 

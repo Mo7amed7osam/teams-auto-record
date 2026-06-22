@@ -6,20 +6,46 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     >
-    <title>Teams Auto Record</title>
+    <title>Teams Meeting Automation</title>
     <link rel="stylesheet" href="popup.css">
   </head>
   <body>
     <main class="popup">
       <header class="hero">
         <p class="eyebrow">Microsoft Teams Web</p>
-        <h1>Teams Auto Record</h1>
-        <p class="subtitle">
-          Preview meetings first, then update only the
-          automatic recording setting.
+        <h1>Teams Meeting Automation</h1>
+        <p id="featureSubtitle" class="subtitle">
+          Preview meetings first, then update only automatic
+          recording and transcription.
         </p>
       </header>
 
+      <nav class="feature-tabs" role="tablist" aria-label="Automation feature">
+        <button
+          id="autoRecordingTab"
+          class="feature-tab active"
+          type="button"
+          role="tab"
+          aria-selected="true"
+          aria-controls="featurePanel"
+          data-feature="auto-recording"
+        >Auto Recording</button>
+        <button
+          id="lobbyAccessTab"
+          class="feature-tab"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          aria-controls="featurePanel"
+          data-feature="lobby-access"
+        >Lobby Access</button>
+      </nav>
+
+      <div
+        id="featurePanel"
+        role="tabpanel"
+        aria-labelledby="autoRecordingTab"
+      >
       <section class="panel">
         <h2>Filters</h2>
         <div class="form-grid">
@@ -131,6 +157,9 @@
 
       <section class="panel">
         <h2>Actions</h2>
+        <p id="desiredAction" class="action-target hidden">
+          Set lobby bypass to: <strong>Everyone</strong>
+        </p>
         <div class="button-row">
           <button id="previewButton" type="button">
             Preview meetings
@@ -172,7 +201,7 @@
             <dd id="updatedCount">0</dd>
           </div>
           <div>
-            <dt>Already enabled</dt>
+            <dt id="alreadyCountLabel">Already enabled</dt>
             <dd id="alreadyEnabledCount">0</dd>
           </div>
           <div>
@@ -225,6 +254,7 @@
           </table>
         </div>
       </section>
+      </div>
 
       <footer class="credit">
         Powered by
@@ -238,6 +268,7 @@
 
     <script src="../shared/constants.js"></script>
     <script src="../shared/utils.js"></script>
+    <script src="../shared/lobby-utils.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

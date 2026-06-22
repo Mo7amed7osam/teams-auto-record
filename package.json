@@ -1,7 +1,7 @@
 {
   "name": "teams-auto-record-workspace",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Workspace for the Teams Auto Record Chrome extension.",
   "scripts": {
     "clean": "node scripts/clean-extension.mjs",
@@ -15,6 +15,7 @@
   "devDependencies": {
     "archiver": "^7.0.1",
     "esbuild": "^0.25.0",
-    "javascript-obfuscator": "^4.1.1"
+    "javascript-obfuscator": "^4.1.1",
+    "jsdom": "^29.1.1"
   }
 }
