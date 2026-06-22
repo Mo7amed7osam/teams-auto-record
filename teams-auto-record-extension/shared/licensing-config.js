@@ -15,8 +15,8 @@
   // Development URL (Local Backend)
   // const LICENSING_API_BASE_URL = "http://localhost:10000/api";
   
-  // Production URL (Make sure this matches your deployed Render URL)
-  const LICENSING_API_BASE_URL = "https://teams-license-api.onrender.com/api";
+  // Production URL (Deployed on Vercel)
+  const LICENSING_API_BASE_URL = "https://server-one-flax-95.vercel.app/api";
 
   const LICENSING_STORAGE_KEYS = {
     INSTALLATION_ID: "teamsAutoRecordInstallationId",
