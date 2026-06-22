@@ -1,5 +1,7 @@
 (function runPopup() {
   const shared = globalThis.TeamsAutoRecordShared;
+  const licensing = globalThis.TeamsAutoRecordLicensing;
+  const licensingConfig = globalThis.TeamsAutoRecordLicensingConfig;
   const {
     MESSAGE_TYPES,
     STORAGE_KEYS,
@@ -31,7 +33,9 @@
       alreadyLabel: "Already enabled",
       alreadyCountKey: "alreadyEnabled",
       filename: "teams-auto-record-report.csv",
-      buildReport: buildCsv
+      buildReport: buildCsv,
+      previewOp: licensingConfig.LICENSING_OPERATIONS.PREVIEW_AUTO_RECORD,
+      startOp: licensingConfig.LICENSING_OPERATIONS.START_AUTO_RECORD
     },
     [FEATURES.LOBBY_ACCESS]: {
       tabId: "lobbyAccessTab",
@@ -48,7 +52,9 @@
       alreadyLabel: "Already configured",
       alreadyCountKey: "alreadyConfigured",
       filename: "teams-lobby-access-report.csv",
-      buildReport: buildLobbyCsv
+      buildReport: buildLobbyCsv,
+      previewOp: licensingConfig.LICENSING_OPERATIONS.PREVIEW_LOBBY,
+      startOp: licensingConfig.LICENSING_OPERATIONS.START_LOBBY
     }
   };
 
@@ -326,12 +332,35 @@
     renderFeature();
   }
 
+  async function verifyBeforeAction(operation) {
+    const operationId =
+      operation === licensingConfig.LICENSING_OPERATIONS.START_AUTO_RECORD ||
+      operation === licensingConfig.LICENSING_OPERATIONS.START_LOBBY
+        ? crypto.randomUUID()
+        : undefined;
+
+    const result = await licensing.verifyLicense(
+      operation,
+      operationId
+    );
+
+    if (!result.allowed) {
+      const message = result.message ||
+        licensing.mapErrorCodeToMessage(result.code || "");
+      throw new Error(message);
+    }
+
+    return result;
+  }
+
   async function handlePreview() {
     clearMessages();
     uiBusy = true;
     updateActionState();
 
     try {
+      await verifyBeforeAction(activeSettings().previewOp);
+
       const config = await saveConfig();
       const response = await sendMessage({
         type: activeSettings().previewMessage,
@@ -358,6 +387,8 @@
     updateActionState();
 
     try {
+      await verifyBeforeAction(activeSettings().startOp);
+
       const rawConfig = await saveConfig();
       const config = normalizeConfig(rawConfig);
 
@@ -563,6 +594,104 @@
     });
   }
 
+  function showActivationPanel() {
+    byId("activationPanel").classList.remove("hidden");
+    byId("mainUI").classList.add("hidden");
+  }
+
+  function showMainUI() {
+    byId("activationPanel").classList.add("hidden");
+    byId("mainUI").classList.remove("hidden");
+  }
+
+  async function updateLicenseStatusBar() {
+    try {
+      const cached = await licensing.getCachedLicenseStatus();
+      const statusText = byId("licenseStatusText");
+      const installationText = byId("licenseInstallationId");
+
+      if (cached.status) {
+        statusText.textContent = "\u25cf License active";
+      }
+
+      if (cached.installationId) {
+        installationText.textContent =
+          "Installation: " +
+          licensing.maskInstallationId(cached.installationId);
+      }
+
+      if (cached.expiresAt) {
+        statusText.textContent +=
+          " \u00b7 Expires: " +
+          new Date(cached.expiresAt).toLocaleDateString();
+      }
+
+      if (
+        cached.remainingRuns !== null &&
+        cached.remainingRuns !== undefined
+      ) {
+        statusText.textContent +=
+          " \u00b7 Runs: " + cached.remainingRuns;
+      }
+    } catch (error) {
+      void error;
+    }
+  }
+
+  function setupActivation() {
+    const keyInput = byId("licenseKeyInput");
+    const activateBtn = byId("activateButton");
+    const msgEl = byId("activationMessage");
+    const errEl = byId("activationError");
+
+    async function handleActivation() {
+      setFeedback(msgEl, "");
+      setFeedback(errEl, "");
+      activateBtn.disabled = true;
+
+      try {
+        const result = await licensing.activateLicense(
+          keyInput.value
+        );
+
+        if (result.allowed) {
+          setFeedback(
+            msgEl,
+            "Activation successful! Loading..."
+          );
+          await updateLicenseStatusBar();
+          setTimeout(async () => {
+            showMainUI();
+            captureElements();
+            bindInputs();
+            bindButtons();
+            await refreshState();
+          }, 600);
+        } else {
+          setFeedback(
+            errEl,
+            result.message ||
+              licensing.mapErrorCodeToMessage(
+                result.code || ""
+              )
+          );
+        }
+      } catch (error) {
+        setFeedback(errEl, error.message);
+      } finally {
+        activateBtn.disabled = false;
+      }
+    }
+
+    activateBtn.addEventListener("click", handleActivation);
+
+    keyInput.addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        handleActivation();
+      }
+    });
+  }
+
   chrome.runtime.onMessage.addListener(message => {
     const feature = Object.entries(featureSettings).find(
       ([, settings]) => settings.updatedMessage === message?.type
@@ -581,6 +710,17 @@
   });
 
   document.addEventListener("DOMContentLoaded", async () => {
+    setupActivation();
+
+    const active = await licensing.isLicenseActive();
+
+    if (!active) {
+      showActivationPanel();
+      return;
+    }
+
+    showMainUI();
+    await updateLicenseStatusBar();
     captureElements();
     bindInputs();
     bindButtons();

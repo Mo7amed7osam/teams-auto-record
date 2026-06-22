@@ -11,6 +11,41 @@
   </head>
   <body>
     <main class="popup">
+      <section id="activationPanel" class="panel activation-panel">
+        <div class="activation-icon">🔐</div>
+        <h2>Activation Required</h2>
+        <p class="activation-subtitle">
+          Enter your one-time activation code to begin.
+        </p>
+        <label>
+          <span>Activation Code</span>
+          <input
+            id="licenseKeyInput"
+            type="text"
+            placeholder="TAR-XXXX-XXXX-XXXX"
+            autocomplete="off"
+            spellcheck="false"
+          >
+        </label>
+        <button id="activateButton" type="button">
+          Activate
+        </button>
+        <p
+          id="activationMessage"
+          class="message"
+          aria-live="polite"
+        ></p>
+        <p
+          id="activationError"
+          class="error"
+          aria-live="assertive"
+        ></p>
+        <p class="activation-note">
+          One-device activation. Contact admin to transfer.
+        </p>
+      </section>
+
+      <div id="mainUI" class="hidden">
       <header class="hero">
         <p class="eyebrow">Microsoft Teams Web</p>
         <h1>Teams Meeting Automation</h1>
@@ -18,6 +53,10 @@
           Preview meetings first, then update only automatic
           recording and transcription.
         </p>
+        <div id="licenseStatusBar" class="license-status-bar">
+          <span id="licenseStatusText" class="license-status-text">● License active</span>
+          <span id="licenseInstallationId" class="muted"></span>
+        </div>
       </header>
 
       <nav class="feature-tabs" role="tablist" aria-label="Automation feature">
@@ -272,11 +311,14 @@
           rel="noopener noreferrer"
         >Mohamed Hosam</a>
       </footer>
+      </div>
     </main>
 
     <script src="../shared/constants.js"></script>
     <script src="../shared/utils.js"></script>
     <script src="../shared/lobby-utils.js"></script>
+    <script src="../shared/licensing-config.js"></script>
+    <script src="../shared/licensing-client.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

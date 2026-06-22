@@ -1,6 +1,8 @@
 importScripts(
   "../shared/constants.js",
-  "../shared/utils.js"
+  "../shared/utils.js",
+  "../shared/licensing-config.js",
+  "../shared/licensing-client.js"
 );
 
 const shared = globalThis.TeamsAutoRecordShared;
@@ -511,6 +513,10 @@ async function handleLobbyStop() {
 
 chrome.runtime.onInstalled.addListener(() => {
   ensureDefaults();
+  const licensing = globalThis.TeamsAutoRecordLicensing;
+  if (licensing?.getOrCreateInstallationId) {
+    licensing.getOrCreateInstallationId();
+  }
 });
 
 chrome.runtime.onStartup.addListener(() => {

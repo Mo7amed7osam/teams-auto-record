@@ -24,10 +24,19 @@ async function createPopup() {
   dom.window.chrome = {
     storage: {
       local: {
-        set: async () => {}
+        get: async () => {
+          return {
+            teamsAutoRecordLicenseKey: "TAR-TEST-TEST-TEST",
+            teamsAutoRecordLicenseStatus: "activated",
+            teamsAutoRecordInstallationId: "test-install-id"
+          };
+        },
+        set: async () => {},
+        remove: async () => {}
       }
     },
     runtime: {
+      getManifest: () => ({ version: "0.1.3" }),
       sendMessage: async message => {
         if (message.type !== "GET_STATE") {
           return { ok: true, plan: [], state: {} };
@@ -47,15 +56,20 @@ async function createPopup() {
     }
   };
   dom.window.confirm = () => false;
+  dom.window.crypto = {
+    randomUUID: () => "00000000-0000-0000-0000-000000000000"
+  };
 
   dom.window.eval(script("shared/constants.js"));
   dom.window.eval(script("shared/utils.js"));
   dom.window.eval(script("shared/lobby-utils.js"));
+  dom.window.eval(script("shared/licensing-config.js"));
+  dom.window.eval(script("shared/licensing-client.js"));
   dom.window.eval(script("popup/popup.js"));
   dom.window.document.dispatchEvent(
     new dom.window.Event("DOMContentLoaded")
   );
-  await new Promise(resolve => setTimeout(resolve, 0));
+  await new Promise(resolve => setTimeout(resolve, 50));
 
   dom.runtimeListeners = listeners;
   return dom;

@@ -288,10 +288,82 @@ export async function validateExtension() {
   assertNoSecrets(filesWithContents);
   smokeTestProtectedSharedCode();
 
+  const combinedDistText = filesWithContents
+    .map(file => file.contents)
+    .join("\n");
+
+  const backendSecretPatterns = [
+    { pattern: /MONGODB_URI/i, label: "MongoDB URI reference" },
+    { pattern: /mongodb\+srv:\/\//i, label: "MongoDB connection string" },
+    { pattern: /JWT_SECRET/i, label: "JWT secret reference" },
+    { pattern: /ADMIN_API_KEY/i, label: "Admin API key reference" },
+    { pattern: /LICENSE_HASH_SECRET/i, label: "License hash secret reference" },
+    { pattern: /DEVICE_HASH_SECRET/i, label: "Device hash secret reference" }
+  ];
+
+  for (const { pattern, label } of backendSecretPatterns) {
+    assert.doesNotMatch(
+      combinedDistText,
+      pattern,
+      `Distribution contains ${label}`
+    );
+  }
+
+  const licensingConfigPath = path.join(
+    distDirectory,
+    "shared/licensing-config.js"
+  );
+  const licensingClientPath = path.join(
+    distDirectory,
+    "shared/licensing-client.js"
+  );
+
+  delete require.cache[require.resolve(licensingConfigPath)];
+  require(licensingConfigPath);
+  const licensingConfigModule = globalThis.TeamsAutoRecordLicensingConfig;
+  assert.ok(
+    licensingConfigModule.LICENSING_API_BASE_URL,
+    "Licensing API URL missing from protected build"
+  );
+  assert.ok(
+    licensingConfigModule.LICENSE_KEY_REGEX,
+    "License key regex missing from protected build"
+  );
+  assert.ok(
+    licensingConfigModule.LICENSING_STORAGE_KEYS.INSTALLATION_ID,
+    "Installation ID storage key missing"
+  );
+
+  delete require.cache[require.resolve(licensingClientPath)];
+  require(licensingClientPath);
+  const licensingClient = globalThis.TeamsAutoRecordLicensing;
+  assert.ok(
+    typeof licensingClient.normalizeLicenseKey === "function",
+    "normalizeLicenseKey not exported from protected build"
+  );
+  assert.ok(
+    typeof licensingClient.maskInstallationId === "function",
+    "maskInstallationId not exported from protected build"
+  );
+
+  const validKey = licensingClient.normalizeLicenseKey("tar-8f4k-29qd-x7pm");
+  assert.equal(validKey.valid, true, "Valid license key rejected");
+  assert.equal(validKey.normalized, "TAR-8F4K-29QD-X7PM");
+
+  const invalidKey = licensingClient.normalizeLicenseKey("invalid");
+  assert.equal(invalidKey.valid, false, "Invalid license key accepted");
+
+  const masked = licensingClient.maskInstallationId(
+    "12345678-1234-1234-1234-123456789abc"
+  );
+  assert.match(masked, /^\*{4}-/, "Installation ID not properly masked");
+
   console.log("Manifest V3 JSON and referenced files: valid");
   console.log("Permissions and host permissions: unchanged");
   console.log("JavaScript syntax and distribution shared-code smoke test: valid");
   console.log("CSP, source maps, remote code, unsafe code, and secrets: clean");
+  console.log("Backend secrets not present in distribution: verified");
+  console.log("Licensing module smoke test: valid");
 }
 
 if (pathToFileURL(process.argv[1]).href === import.meta.url) {

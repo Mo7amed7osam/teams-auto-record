@@ -18,7 +18,9 @@ export const javascriptFiles = [
   "shared/constants.js",
   "shared/utils.js",
   "shared/lobby-utils.js",
-  "content/lobby-access.js"
+  "content/lobby-access.js",
+  "shared/licensing-config.js",
+  "shared/licensing-client.js"
 ];
 
 export const staticFiles = [
@@ -73,7 +75,21 @@ export const criticalStrings = [
   "shared/utils.js",
   "shared/lobby-utils.js",
   "content/lobby-access.js",
-  "content/content.js"
+  "content/content.js",
+  "shared/licensing-config.js",
+  "shared/licensing-client.js",
+  "teamsAutoRecordInstallationId",
+  "teamsAutoRecordLicenseKey",
+  "teamsAutoRecordLicenseStatus",
+  "teamsAutoRecordLicenseToken",
+  "teamsAutoRecordLicenseTokenExpiresAt",
+  "teamsAutoRecordLastVerifiedAt",
+  "TAR-",
+  "/licenses/activate",
+  "/licenses/verify",
+  "LICENSE_ALREADY_BOUND",
+  "DEVICE_MISMATCH",
+  "SERVER_UNAVAILABLE"
 ];
 
 export const obfuscatorOptions = {

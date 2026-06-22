@@ -1,0 +1,18 @@
+- `[x]` Implement Backend Service (Node.js/Express)
+    - `[x]` Setup project structure and dependencies
+    - `[x]` Implement Mongoose models (License, Operation)
+    - `[x]` Implement Crypto utilities (Hashing, Key generation, Constant-time equality)
+    - `[x]` Implement Token service (JWT signing/verifying)
+    - `[x]` Implement License service (Atomic activation logic, Idempotent verification logic)
+    - `[x]` Implement Controllers and Routes
+    - `[x]` Add Rate limiting and security headers (Helmet, CORS)
+    - `[x]` Create CLI scripts for license management (generate, reset, disable, enable, inspect)
+- `[x]` Create documentation
+    - `[x]` `LICENSING.md`
+    - `[x]` `MONGODB_ATLAS_SETUP.md`
+    - `[x]` `DEPLOYMENT.md`
+- `[x]` Test and finalize
+    - `[x]` Write backend unit tests for utilities and validation
+    - `[x]` Run full extension test suite (all passing)
+    - `[x]` Validate protected build for security secrets (none leaked)
+    - `[x]` Create final release ZIP (`release/teams-auto-record-0.1.3.zip`)

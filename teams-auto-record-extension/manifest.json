@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Teams Auto Record",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Safely automate recording and lobby access settings for matching Microsoft Teams Web meetings.",
   "permissions": [
     "activeTab",
@@ -13,7 +13,8 @@
   "host_permissions": [
     "https://teams.microsoft.com/*",
     "https://teams.cloud.microsoft/*",
-    "https://outlook.office.com/*"
+    "https://outlook.office.com/*",
+    "https://teams-license-api.onrender.com/*"
   ],
   "action": {
     "default_title": "Teams Auto Record",
