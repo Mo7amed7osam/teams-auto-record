@@ -15,25 +15,27 @@ const app = require('../src/app');
 const env = require('../src/config/env');
 
 async function runSimulation() {
-  console.log('--- STARTING E2E SIMULATION ---');
-  let mongoServer;
+  console.log('--- STARTING E2E SIMULATION AGAINST REAL ATLAS ---');
   
   try {
-    mongoServer = await MongoMemoryServer.create();
-    const uri = mongoServer.getUri();
+    const uri = 'mongodb+srv://midohoss2003_db_user:8fqaqzxUMBGqObgH@cluster0.5jbaykp.mongodb.net/?retryWrites=true&w=majority';
     
     // Set env variables for scripts
     process.env.MONGODB_URI = uri;
-    process.env.MONGODB_DB_NAME = 'e2e_test';
+    process.env.MONGODB_DB_NAME = 'test';
     process.env.LICENSE_HASH_SECRET = 'secret1';
     process.env.DEVICE_HASH_SECRET = 'secret2';
     process.env.JWT_SECRET = 'secret3';
     process.env.ADMIN_API_KEY = 'admin-key';
     
     env.MONGODB_URI = uri;
-    env.MONGODB_DB_NAME = 'e2e_test';
+    env.MONGODB_DB_NAME = 'test';
     
-    await mongoose.connect(uri, { dbName: 'e2e_test' });
+    await mongoose.connect(uri, { dbName: 'test' });
+
+    // Clean up previous test data
+    await mongoose.connection.db.collection('licenses').deleteMany({});
+    await mongoose.connection.db.collection('operations').deleteMany({});
 
     const serverRoot = path.resolve(__dirname, '..');
     const execOptions = { cwd: serverRoot, env: process.env, encoding: 'utf8' };
@@ -124,9 +126,6 @@ async function runSimulation() {
   } finally {
     if (mongoose.connection.readyState !== 0) {
       await mongoose.disconnect();
-    }
-    if (mongoServer) {
-      await mongoServer.stop();
     }
   }
 }

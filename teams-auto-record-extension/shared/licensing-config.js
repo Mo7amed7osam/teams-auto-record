@@ -13,10 +13,10 @@
    */
 
   // Development URL (Local Backend)
-  const LICENSING_API_BASE_URL = "http://localhost:10000/api";
+  // const LICENSING_API_BASE_URL = "http://localhost:10000/api";
   
-  // Production URL (Uncomment and replace when deployed to Render)
-  // const LICENSING_API_BASE_URL = "https://your-real-api-url.onrender.com/api";
+  // Production URL (Make sure this matches your deployed Render URL)
+  const LICENSING_API_BASE_URL = "https://teams-license-api.onrender.com/api";
 
   const LICENSING_STORAGE_KEYS = {
     INSTALLATION_ID: "teamsAutoRecordInstallationId",

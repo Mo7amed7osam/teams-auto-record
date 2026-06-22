@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: teams-license-api
+    env: node
+    region: frankfurt # Can be adjusted
+    buildCommand: npm install
+    startCommand: node src/server.js
+    rootDir: server
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        value: mongodb+srv://midohoss2003_db_user:8fqaqzxUMBGqObgH@cluster0.5jbaykp.mongodb.net/?retryWrites=true&w=majority
+      - key: MONGODB_DB_NAME
+        value: test
+      - key: LICENSE_HASH_SECRET
+        generateValue: true
+      - key: DEVICE_HASH_SECRET
+        generateValue: true
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_API_KEY
+        generateValue: true
+      - key: ALLOWED_EXTENSION_ORIGINS
+        # Replace with your actual extension ID in production
+        value: chrome-extension://your_extension_id_here
+      - key: TOKEN_TTL_MINUTES
+        value: "15"
+      - key: OFFLINE_GRACE_HOURS
+        value: "12"
