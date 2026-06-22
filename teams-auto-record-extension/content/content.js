@@ -870,91 +870,273 @@
     );
   }
 
-  async function setLobbyBypassToEveryone(dialog, config) {
-    const meetingAccessTab = lobbyAccess.findMeetingAccessTab(
-      dialog,
-      visible
-    );
+  function ensureLobbyDialogOpen(dialog) {
+    if (!document.contains(dialog) || !visible(dialog)) {
+      throw new Error("Meeting options dialog closed unexpectedly");
+    }
+  }
 
-    if (!meetingAccessTab) {
-      throw new Error("Meeting access section missing");
+  function getSettingResultFields(definition, previousValue) {
+    if (definition.key === "lobbyBypass") {
+      return {
+        previousLobbyBypassValue: previousValue,
+        newLobbyBypassValue: shared.EVERYONE_VALUE
+      };
     }
 
-    if (
-      meetingAccessTab.getAttribute("aria-selected") !== "true"
-    ) {
-      meetingAccessTab.click();
-    }
+    return {
+      previousJoinScreenInfoValue: previousValue,
+      newJoinScreenInfoValue: shared.EVERYONE_VALUE
+    };
+  }
 
-    const lobbyControl = await waitFor(
-      () => lobbyAccess.findLobbyControl(dialog, visible),
-      "Lobby bypass control not found",
+  async function setMeetingAccessSettingToEveryone(
+    dialog,
+    definition,
+    config
+  ) {
+    const association = await waitFor(
+      () => {
+        ensureLobbyDialogOpen(dialog);
+        return lobbyAccess.findSetting(dialog, definition, visible);
+      },
+      `${definition.errorLabel} setting not found`,
       config.timeoutMs,
       250,
       () => lobbyRuntime.stopRequested
     );
-    const previousValue = lobbyAccess.readLobbyValue(lobbyControl);
+    const previousValue = lobbyAccess.readSettingValue(
+      association.control,
+      definition.label
+    );
 
     if (!previousValue) {
-      throw new Error("Current lobby value unreadable");
+      throw new Error(
+        `${definition.errorLabel} current value unreadable`
+      );
     }
 
     if (shared.isEveryoneLobbyOption(previousValue)) {
-      await closeLobbyOptionsDialog(dialog, config);
-      return {
-        feature: shared.LOBBY_FEATURE_NAME,
-        previousValue,
-        newValue: shared.EVERYONE_VALUE,
-        status: "Already Everyone"
-      };
+      return Object.assign(
+        { changed: false },
+        getSettingResultFields(definition, previousValue)
+      );
     }
 
-    lobbyControl.click();
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      ensureLobbyDialogOpen(dialog);
+      const currentAssociation = lobbyAccess.findSetting(
+        dialog,
+        definition,
+        visible
+      );
 
-    const everyoneOption = await waitFor(
-      () => lobbyAccess.findEveryoneOption(dialog, visible),
-      "Everyone option not found",
-      12000,
-      250,
-      () => lobbyRuntime.stopRequested
+      if (!currentAssociation?.control) {
+        throw new Error(
+          `${definition.errorLabel} combobox not found`
+        );
+      }
+
+      currentAssociation.control.scrollIntoView({
+        block: "center",
+        inline: "nearest"
+      });
+      currentAssociation.control.click();
+
+      try {
+        const everyoneOption = await waitFor(
+          () => {
+            ensureLobbyDialogOpen(dialog);
+            return lobbyAccess.findEveryoneOptionForControl(
+              document,
+              dialog,
+              currentAssociation.control,
+              visible
+            );
+          },
+          `Everyone option for ${definition.errorLabel.toLowerCase()} not found`,
+          12000,
+          250,
+          () => lobbyRuntime.stopRequested
+        );
+
+        everyoneOption.click();
+
+        await waitFor(
+          () => {
+            ensureLobbyDialogOpen(dialog);
+            const refreshed = lobbyAccess.findSetting(
+              dialog,
+              definition,
+              visible
+            );
+            return (
+              refreshed?.control &&
+              shared.isEveryoneLobbyOption(
+                lobbyAccess.readSettingValue(
+                  refreshed.control,
+                  definition.label
+                )
+              )
+            );
+          },
+          `Could not confirm ${definition.errorLabel.toLowerCase()} value`,
+          8000,
+          250,
+          () => lobbyRuntime.stopRequested
+        );
+
+        return Object.assign(
+          { changed: true },
+          getSettingResultFields(definition, previousValue)
+        );
+      } catch (error) {
+        if (isStopError(error) || attempt === 1) {
+          throw error;
+        }
+        pressEscape();
+        await sleep(500);
+      }
+    }
+
+    throw new Error(
+      `Could not confirm ${definition.errorLabel.toLowerCase()} value`
+    );
+  }
+
+  function readFinalMeetingAccessValues(dialog) {
+    const lobbySetting = lobbyAccess.findSetting(
+      dialog,
+      lobbyAccess.SETTING_DEFINITIONS.LOBBY_BYPASS,
+      visible
+    );
+    const joinInfoSetting = lobbyAccess.findSetting(
+      dialog,
+      lobbyAccess.SETTING_DEFINITIONS.JOIN_SCREEN_INFO,
+      visible
     );
 
-    everyoneOption.click();
-
-    await waitFor(
-      () => {
-        const currentControl = lobbyAccess.findLobbyControl(
-          dialog,
-          visible
-        );
-        return (
-          currentControl &&
-          shared.isEveryoneLobbyOption(
-            lobbyAccess.readLobbyValue(currentControl)
+    return {
+      lobbyBypass: lobbySetting?.control
+        ? lobbyAccess.readSettingValue(
+            lobbySetting.control,
+            lobbyAccess.SETTING_DEFINITIONS.LOBBY_BYPASS.label
           )
+        : "",
+      joinScreenInfo: joinInfoSetting?.control
+        ? lobbyAccess.readSettingValue(
+            joinInfoSetting.control,
+            lobbyAccess.SETTING_DEFINITIONS.JOIN_SCREEN_INFO.label
+          )
+        : ""
+    };
+  }
+
+  function bothMeetingAccessValuesAreEveryone(values) {
+    return (
+      shared.isEveryoneLobbyOption(values.lobbyBypass) &&
+      shared.isEveryoneLobbyOption(values.joinScreenInfo)
+    );
+  }
+
+  async function setLobbyAccessSettingsToEveryone(dialog, config) {
+    const lobbyLoadTimeoutMs = lobbyAccess.isMeetingOptionsLoading(
+      dialog,
+      visible
+    )
+      ? Math.max(config.timeoutMs, 60000)
+      : config.timeoutMs;
+
+    const meetingAccessReady = await waitFor(
+      () => {
+        ensureLobbyDialogOpen(dialog);
+        return (
+          lobbyAccess.findMeetingAccessTab(dialog, visible) ||
+          lobbyAccess.findLobbyControl(dialog, visible)
         );
       },
-      "Could not confirm lobby value changed",
-      8000,
+      "Meeting access section missing",
+      lobbyLoadTimeoutMs,
       250,
       () => lobbyRuntime.stopRequested
     );
 
-    const applyButton = await waitFor(
-      () => {
-        const candidate = lobbyAccess.findApplyButton(
-          dialog,
-          visible
-        );
-        return lobbyAccess.isEnabledControl(candidate)
-          ? candidate
-          : null;
+    if (
+      meetingAccessReady.matches?.('[role="tab"]') &&
+      meetingAccessReady.getAttribute("aria-selected") !== "true"
+    ) {
+      meetingAccessReady.click();
+      await sleep(300);
+    }
+
+    const [lobbyResult, joinInfoResult] =
+      await shared.runLobbySettingSequence({
+        settings: [
+          lobbyAccess.SETTING_DEFINITIONS.LOBBY_BYPASS,
+          lobbyAccess.SETTING_DEFINITIONS.JOIN_SCREEN_INFO
+        ],
+        shouldStop: () => lobbyRuntime.stopRequested,
+        updateSetting: definition =>
+          setMeetingAccessSettingToEveryone(
+            dialog,
+            definition,
+            config
+          )
+      });
+    const result = Object.assign(
+      {
+        feature: shared.LOBBY_FEATURE_NAME,
+        status: "Updated"
       },
-      "Apply button remained disabled",
-      12000,
-      250,
-      () => lobbyRuntime.stopRequested
+      lobbyResult,
+      joinInfoResult
     );
+    delete result.changed;
+
+    const finalValues = readFinalMeetingAccessValues(dialog);
+    if (!bothMeetingAccessValuesAreEveryone(finalValues)) {
+      throw new Error(
+        "Could not confirm both Lobby Access settings"
+      );
+    }
+
+    if (!lobbyResult.changed && !joinInfoResult.changed) {
+      await closeLobbyOptionsDialog(dialog, config);
+      result.status = "Already configured";
+      return result;
+    }
+
+    let applyButton = null;
+    try {
+      applyButton = await waitFor(
+        () => {
+          ensureLobbyDialogOpen(dialog);
+          const candidate = lobbyAccess.findApplyButton(
+            dialog,
+            visible
+          );
+          return lobbyAccess.isEnabledControl(candidate)
+            ? candidate
+            : null;
+        },
+        "Apply button remained disabled",
+        12000,
+        250,
+        () => lobbyRuntime.stopRequested
+      );
+    } catch (error) {
+      if (
+        !isStopError(error) &&
+        bothMeetingAccessValuesAreEveryone(
+          readFinalMeetingAccessValues(dialog)
+        )
+      ) {
+        await closeLobbyOptionsDialog(dialog, config);
+        result.status = "Already configured";
+        return result;
+      }
+      throw error;
+    }
 
     applyButton.click();
 
@@ -966,12 +1148,7 @@
       () => false
     );
 
-    return {
-      feature: shared.LOBBY_FEATURE_NAME,
-      previousValue,
-      newValue: shared.EVERYONE_VALUE,
-      status: "Updated"
-    };
+    return result;
   }
 
   async function processLobbyMeeting(meeting, config) {
@@ -979,10 +1156,10 @@
       shouldStop: () => lobbyRuntime.stopRequested,
       readyFinder: () =>
         lobbyAccess.findMeetingOptionsDialog(document, visible),
-      readyError: "Meeting access section missing"
+      readyError: "Meeting options dialog did not open"
     });
 
-    return setLobbyBypassToEveryone(dialog, config);
+    return setLobbyAccessSettingsToEveryone(dialog, config);
   }
 
   function createLobbyResult(index, plannedMeeting, values) {
@@ -993,8 +1170,10 @@
         date: plannedMeeting.date,
         time: plannedMeeting.time,
         feature: shared.LOBBY_FEATURE_NAME,
-        previousValue: "",
-        newValue: shared.EVERYONE_VALUE,
+        previousLobbyBypassValue: "",
+        newLobbyBypassValue: shared.EVERYONE_VALUE,
+        previousJoinScreenInfoValue: "",
+        newJoinScreenInfoValue: shared.EVERYONE_VALUE,
         status: "Failed",
         error: ""
       },

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Teams Auto Record",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Safely automate recording and lobby access settings for matching Microsoft Teams Web meetings.",
   "permissions": [
     "activeTab",

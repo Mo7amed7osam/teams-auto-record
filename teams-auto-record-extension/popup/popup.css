@@ -169,6 +169,15 @@ button:focus {
   color: var(--accent);
 }
 
+.action-target ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.action-target li + li {
+  margin-top: 4px;
+}
+
 .button-row.secondary {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }

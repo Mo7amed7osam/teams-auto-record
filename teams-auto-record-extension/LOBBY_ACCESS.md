@@ -2,95 +2,105 @@
 
 ## Purpose
 
-The Lobby Access tab changes exactly one Microsoft Teams meeting option:
+For every matching meeting, the separate **Lobby Access** tab sets exactly two
+Microsoft Teams Meeting access options to `Everyone`:
 
-`Who can bypass the lobby?` to `Everyone`.
+1. `Who can bypass the lobby?`
+2. `Show meeting info on join screen`
 
-It shares the existing Calendar meeting discovery, date/time/title filtering,
-limits, duplicate occurrence planning, navigation, retries, and safe return
-logic used by Auto Recording. Its configuration, runtime state, Stop command,
-results, and CSV are independent.
+It reuses the existing Calendar filters, limits, duplicate-occurrence plan,
+retries, progress, Stop, return-to-calendar behavior, local storage, and CSV
+export. Auto Recording keeps independent configuration, state, and results;
+the two live automations cannot run simultaneously.
 
 ## Safety boundaries
 
-Lobby Access never changes recording, roles, presenters, Copilot, participant
-audio/video, title, date, time, attendees, organizer, recurrence, meeting link,
-announcements, or any other Meeting access value. It never joins, deletes,
-cancels, reschedules, or chats in a meeting.
+Lobby Access does not change recording, roles, presenters, Copilot, attendee
+audio/video, chat, announcements, title, date, time, attendees, recurrence, or
+meeting links. It never joins, deletes, cancels, or reschedules a meeting.
+Preview only reads the currently rendered Calendar meetings and opens no
+meeting.
 
-Preview makes no changes and does not open meetings. A live run is blocked while
-Auto Recording is running, and Auto Recording is blocked while Lobby Access is
-running.
+## Selector strategy
 
-## Confirmed selector strategy
-
-The live Teams DOM was inspected on June 22, 2026. The lobby combobox exposed:
+The live Teams DOM was inspected on June 22, 2026. The controls expose:
 
 ```text
-role="combobox"
-aria-label="Who can bypass the lobby?"
-data-tid="AutoAdmittedUsers"
-id="AutoAdmittedUsers"
+Who can bypass the lobby?
+  role="combobox"
+  data-tid="AutoAdmittedUsers"
+  id="AutoAdmittedUsers"
+
+Show meeting info on join screen
+  role="combobox"
+  data-tid="AllowedUsersForMeetingDetails"
+  id="AllowedUsersForMeetingDetails"
 ```
 
-The target option exposed:
+Both controls expose exact `aria-label` values and `aria-labelledby` references.
+Discovery validates the accessible label, climbs to the nearest visible group
+containing that label and exactly one visible combobox, and uses `data-tid`/ID
+only as stable fallbacks. Nested label spans and the join-screen description are
+supported without selecting neighboring controls.
 
-```text
-role="option"
-data-tid="Everyone"
-text="Everyone"
-```
+The visible Meeting options content is a `role="document"` child of a
+zero-size `role="dialog"` wrapper. The helper returns the visible content root,
+requires Meeting options structure (`tablist`, loading indicator, or a known
+setting), and ignores the event editor's unrelated Meeting options link.
 
-Discovery follows these constraints:
+Teams portals each open listbox outside the dialog DOM. The automation never
+searches globally for the first `Everyone`. It accepts only the visible
+`role="listbox"` whose exact ID is supplied by `aria-controls` on the scoped,
+expanded combobox. Inside that listbox it selects one visible `role="option"`
+whose normalized text is exactly `Everyone`.
 
-1. Find a visible `role="dialog"` containing `Meeting options` and the lobby
-   combobox.
-2. Find the `Meeting access` tab inside that dialog and activate it if needed.
-3. Prefer `[data-tid="AutoAdmittedUsers"][role="combobox"]`; fall back to the
-   exact accessible label.
-4. Read and normalize the current displayed value.
-5. If it is exactly `Everyone`, close the Meeting options dialog without Apply
-   and report `Already Everyone`.
-6. Otherwise open that combobox and find a visible `role="option"` whose
-   normalized text is exactly `Everyone`, scoped to the same dialog.
-7. Confirm the combobox displays `Everyone` before continuing.
-8. Find the exact visible Apply button inside that same dialog, wait until it is
-   enabled, click once, and wait for the dialog to close.
+Apply and Close are found by exact text/accessibility label inside the same
+visible Meeting options content root. Hidden dialogs, hidden listboxes, stale
+options, unrelated Everyone strings, and disabled Apply buttons are rejected.
 
-Unrelated `Everyone` text, such as presenter or annotation settings, cannot be
-selected because option discovery is scoped to the active Meeting options
-dialog and exact option text.
+## Workflow and statuses
 
-## Statuses and local data
+The Meeting access tab is activated when necessary. Each control is rediscovered
+after Teams renders, read before changes, updated independently, and confirmed
+again from the same setting group. The automation rereads both final values
+before reporting success.
 
-Statuses are `Updated`, `Already Everyone`, `Failed`, and `Stopped`. Stored rows
-contain only number, visible meeting title/date/time, feature, previous value,
-new value, status, and error. They do not contain attendees, bodies, organizers,
-or meeting links.
+- `Updated`: one or both settings changed, both confirmed as Everyone, and the
+  enabled scoped Apply button completed.
+- `Already configured`: both settings were already Everyone, or Teams showed
+  both as Everyone while Apply remained disabled.
+- `Failed`: a required dialog, setting, controlled listbox, exact option,
+  confirmation, Apply action, or return step failed.
+- `Stopped`: the user requested Stop; completed rows remain and remaining rows
+  are marked stopped.
 
-## Selector maintenance
+One failed meeting is recorded and the batch returns to Calendar before trying
+the next planned occurrence.
 
-If Teams changes the UI, inspect the live Meeting options DOM before editing
-selectors. Maintain the label relationship and dialog scoping even if the
-`data-tid` changes. Never replace these selectors with coordinates or a global
-search for `Everyone`.
+## Reporting and privacy
 
-## Manual validation checklist
+Rows and CSV include meeting number, visible title/date/time, previous and new
+lobby-bypass values, previous and new join-screen-info values, status, and error.
+They do not include attendees, organizer details, body content, meeting URLs,
+credentials, cookies, or tokens. No data is transmitted externally.
 
-1. Load the development `dist/` extension.
-2. Open Teams Calendar and the Lobby Access tab.
-3. Preview three meetings and confirm no dialog opens and no setting changes.
-4. Run live with limit one and confirm the lobby value becomes Everyone.
-5. Confirm Apply succeeds and no neighboring setting changes.
-6. Test a meeting already set to Everyone.
-7. Run three meetings, including duplicate titles.
-8. Stop during a run and confirm dialogs close and remaining rows are Stopped.
-9. Force one meeting failure and confirm later meetings continue.
-10. Re-test Auto Recording and both CSV exports.
-11. Build with `npm run build:protected`, load protected `dist/`, and repeat.
+## Manual validation
+
+1. Build and load `dist/`, then reload the Teams tab.
+2. Preview one meeting and confirm no Meeting options dialog opens.
+3. Run live with limit one and confirm both documented values are Everyone.
+4. Confirm no unrelated Meeting option changed.
+5. Run a meeting where both values are already Everyone and verify
+   `Already configured` without Apply.
+6. Run three meetings, including duplicate titles.
+7. Stop during each dropdown and between the two settings.
+8. Force one meeting failure and confirm later meetings continue.
+9. Re-test Auto Recording, local state, both CSV exports, and the protected build.
 
 ## Known limitations
 
-Availability of Everyone depends on Microsoft tenant policy. Teams can change
-labels, roles, or `data-tid` values. Dynamic loading can temporarily hide the
-dialog or leave Apply disabled; the run records a clear failure and continues.
+Microsoft tenant policy can remove or reject Everyone. Teams can change labels,
+`data-tid` values, dialog structure, or `aria-controls` behavior. Only meetings
+currently rendered in the visible Calendar view are processed. Slow Meeting
+options rendering can require retries. A protected build still needs live Chrome
+validation after every significant Teams UI change.

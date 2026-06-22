@@ -72,12 +72,18 @@ integer format, then rebuild. A patch release changes `0.1.0` to `0.1.1`.
    feature tabs, local progress, Stop, and both CSV exports.
 5. Run Auto Recording with a limit of one and confirm only automatic recording
    and transcription changes.
-6. Run Lobby Access with a limit of one and confirm only `Who can bypass the
-   lobby?` changes to `Everyone`.
-7. Test a meeting already set to Everyone and confirm `Already Everyone`.
+6. Run Lobby Access with a limit of one and confirm both `Who can bypass the
+   lobby?` and `Show meeting info on join screen` change to `Everyone`.
+7. Test a meeting with both values already set to Everyone and confirm
+   `Already configured` without an unnecessary Apply.
 8. Confirm neither feature joins, deletes, cancels, or reschedules a meeting.
 9. Inspect the extension service worker and popup console for CSP or runtime
    errors.
+
+Also validate Stop during each dropdown, duplicate-title meetings, one failed
+meeting followed by a successful meeting, both CSV exports, and a three-meeting
+Lobby Access run. Teams listboxes are portaled outside the dialog and must remain
+associated through the scoped combobox's `aria-controls` value.
 
 ## Security limits
 

@@ -157,9 +157,13 @@
 
       <section class="panel">
         <h2>Actions</h2>
-        <p id="desiredAction" class="action-target hidden">
-          Set lobby bypass to: <strong>Everyone</strong>
-        </p>
+        <div id="desiredAction" class="action-target hidden">
+          <strong>Set lobby access settings to Everyone</strong>
+          <ul>
+            <li>Who can bypass the lobby → Everyone</li>
+            <li>Show meeting info on join screen → Everyone</li>
+          </ul>
+        </div>
         <div class="button-row">
           <button id="previewButton" type="button">
             Preview meetings
@@ -246,6 +250,10 @@
                 <th>Title</th>
                 <th>Date</th>
                 <th>Time</th>
+                <th data-lobby-column class="hidden">Lobby before</th>
+                <th data-lobby-column class="hidden">Lobby after</th>
+                <th data-lobby-column class="hidden">Join info before</th>
+                <th data-lobby-column class="hidden">Join info after</th>
                 <th>Status</th>
                 <th>Error</th>
               </tr>

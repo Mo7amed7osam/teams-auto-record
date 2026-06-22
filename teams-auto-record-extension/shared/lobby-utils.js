@@ -33,7 +33,7 @@
       found,
       processed,
       updated: countStatus("Updated"),
-      alreadyEveryone: countStatus("Already Everyone"),
+      alreadyConfigured: countStatus("Already configured"),
       failed: countStatus("Failed"),
       stopped: countStatus("Stopped"),
       progressPercentage:
@@ -50,8 +50,10 @@
       "title",
       "date",
       "time",
-      "previousValue",
-      "newValue",
+      "previousLobbyBypassValue",
+      "newLobbyBypassValue",
+      "previousJoinScreenInfoValue",
+      "newJoinScreenInfoValue",
       "status",
       "error"
     ];
@@ -79,14 +81,32 @@
         date: item.date,
         time: item.time,
         feature: LOBBY_FEATURE_NAME,
-        previousValue: "",
-        newValue: EVERYONE_VALUE,
+        previousLobbyBypassValue: "",
+        newLobbyBypassValue: EVERYONE_VALUE,
+        previousJoinScreenInfoValue: "",
+        newJoinScreenInfoValue: EVERYONE_VALUE,
         status: "Stopped",
         error: "Stopped by user"
       });
     }
 
     return output;
+  }
+
+  async function runLobbySettingSequence(options) {
+    const settings = options?.settings || [];
+    const updateSetting = options?.updateSetting;
+    const shouldStop = options?.shouldStop || (() => false);
+    const results = [];
+
+    for (const setting of settings) {
+      if (shouldStop()) {
+        throw new Error("Automation stopped manually");
+      }
+      results.push(await updateSetting(setting));
+    }
+
+    return results;
   }
 
   const api = {
@@ -96,7 +116,8 @@
     isEveryoneLobbyOption,
     summarizeLobbyResults,
     buildLobbyCsv,
-    appendStoppedLobbyResults
+    appendStoppedLobbyResults,
+    runLobbySettingSequence
   };
 
   root.TeamsAutoRecordShared = Object.assign({}, shared, api);

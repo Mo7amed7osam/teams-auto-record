@@ -57,6 +57,7 @@ async function createPopup() {
   );
   await new Promise(resolve => setTimeout(resolve, 0));
 
+  dom.runtimeListeners = listeners;
   return dom;
 }
 
@@ -81,10 +82,67 @@ test("popup switches between independent feature tabs", async () => {
   );
   assert.equal(
     document.getElementById("alreadyCountLabel").textContent,
-    "Already Everyone"
+    "Already configured"
   );
   assert.equal(
     document.getElementById("startButton").textContent,
     "Start lobby access"
   );
+  assert.match(
+    document.getElementById("desiredAction").textContent,
+    /Who can bypass the lobby.*Everyone/s
+  );
+  assert.match(
+    document.getElementById("desiredAction").textContent,
+    /Show meeting info on join screen.*Everyone/s
+  );
+  assert.equal(
+    document.querySelectorAll("[data-lobby-column]:not(.hidden)").length,
+    4
+  );
+});
+
+test("popup renders both Lobby Access setting values", async () => {
+  const dom = await createPopup();
+  const document = dom.window.document;
+  document.getElementById("lobbyAccessTab").click();
+
+  dom.runtimeListeners[0]({
+    type: "LOBBY_STATE_UPDATED",
+    state: {
+      status: "complete",
+      running: false,
+      counts: {
+        found: 1,
+        processed: 1,
+        updated: 1,
+        alreadyConfigured: 0,
+        failed: 0
+      },
+      progressPercentage: 100,
+      results: [
+        {
+          number: 1,
+          title: "L1_0172",
+          date: "Tuesday, June 23, 2026",
+          time: "14:00 to 17:00",
+          previousLobbyBypassValue: "People in my org and guests",
+          newLobbyBypassValue: "Everyone",
+          previousJoinScreenInfoValue:
+            "Users allowed to bypass the lobby",
+          newJoinScreenInfoValue: "Everyone",
+          status: "Updated",
+          error: ""
+        }
+      ]
+    }
+  });
+
+  const cells = [
+    ...document.querySelectorAll("#reportBody tr:first-child td")
+  ].map(cell => cell.textContent);
+  assert.equal(cells.length, 10);
+  assert.equal(cells[4], "People in my org and guests");
+  assert.equal(cells[6], "Users allowed to bypass the lobby");
+  assert.equal(cells[8], "Updated");
 });

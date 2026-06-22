@@ -4,7 +4,8 @@ This Manifest V3 extension automates two independent Microsoft Teams Web
 meeting settings for meetings visible in the current Calendar view:
 
 - **Auto Recording** enables `Record and transcribe automatically`.
-- **Lobby Access** sets `Who can bypass the lobby?` to `Everyone`.
+- **Lobby Access** sets both `Who can bypass the lobby?` and
+  `Show meeting info on join screen` to `Everyone`.
 
 Both features preview matching meetings before live changes, preserve duplicate
 meeting titles as separate events, support Stop and retries, store independent
@@ -13,7 +14,7 @@ local reports, and export CSV files.
 ## Safety scope
 
 Auto Recording changes only recording and transcription. Lobby Access changes
-only the lobby bypass dropdown. The extension never joins, deletes, cancels, or
+only the two documented Meeting access dropdowns. The extension never joins, deletes, cancels, or
 reschedules meetings and never changes attendees, titles, dates, roles,
 presenter settings, Copilot, microphones, cameras, chat, links, or recurrence.
 
@@ -54,7 +55,8 @@ The original Console fallback remains unchanged at
   automations from running simultaneously.
 - `content/content.js` owns shared calendar discovery, filtering, duplicate
   occurrence planning, meeting navigation, retries, Stop, and both batch loops.
-- `content/lobby-access.js` contains only scoped Lobby Access DOM discovery.
+- `content/lobby-access.js` contains scoped setting-group, dialog, controlled
+  listbox, Apply, and Close discovery for Lobby Access.
 - `shared/constants.js` defines stable messages, storage keys, defaults, and
   state factories for both features.
 - `shared/utils.js` contains shared meeting filters and plan construction.
@@ -73,7 +75,12 @@ Lobby Access was verified against the live Teams DOM on June 22, 2026:
 
 - `[data-tid="AutoAdmittedUsers"][role="combobox"]`
 - fallback: `[role="combobox"][aria-label="Who can bypass the lobby?"]`
-- selected target: `[role="option"][data-tid="Everyone"]` with exact text
+- `[data-tid="AllowedUsersForMeetingDetails"][role="combobox"]`
+- fallback: `[role="combobox"][aria-label="Show meeting info on join screen"]`
+- each combobox is validated against its exact label and nearest logical group
+- after a dropdown opens, its `aria-controls` ID identifies the only accepted
+  visible listbox, even though Teams portals that listbox outside the dialog
+- the selected option must have `role="option"` and exact normalized text
   `Everyone`
 - the Meeting access tab uses `role="tab"` and exact text `Meeting access`
 - Apply is selected by exact text inside the same visible Meeting options dialog
@@ -84,7 +91,7 @@ Selectors never use coordinates. See `LOBBY_ACCESS.md` for maintenance details.
 
 Configurations, progress, and result rows are stored only in
 `chrome.storage.local`. Lobby results may contain meeting title, visible date,
-visible time, previous lobby value, new value, status, and error reason. The
+visible time, both previous values, both new values, status, and error reason. The
 extension does not store attendees, organizers, meeting links, bodies,
 credentials, cookies, or tokens and does not send meeting data externally.
 
@@ -106,7 +113,8 @@ source maps or readable JavaScript source.
 ## Known limitations
 
 - Only meetings currently rendered in the visible Calendar view are processed.
-- Teams is a dynamic application; loading delays may require retries.
+- Teams is a dynamic application; loading delays and portaled listboxes may
+  require retries when Microsoft changes rendering behavior.
 - Microsoft can change accessible labels, `data-tid` values, or dialog layout.
 - Tenant policy can limit whether a lobby value is available or accepted.
 - A protected build still requires manual Chrome and live Teams validation.

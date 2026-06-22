@@ -123,7 +123,7 @@
         found: 0,
         processed: 0,
         updated: 0,
-        alreadyEveryone: 0,
+        alreadyConfigured: 0,
         failed: 0,
         stopped: 0
       },

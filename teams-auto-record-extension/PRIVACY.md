@@ -10,7 +10,7 @@ Teams Meeting Automation runs locally in the user's browser and does not send me
 - It does not collect, sell, or share personal data.
 - It does not read passwords, cookies, or authentication tokens.
 - It does not intercept Microsoft sign-in flows.
-- It only interacts with visible Microsoft Teams meeting UI needed to preview meetings, update automatic recording, or set lobby bypass to Everyone.
+- It only interacts with visible Microsoft Teams meeting UI needed to preview meetings, update automatic recording, or set the two documented Lobby Access options to Everyone.
 - It stores configuration, progress, and result rows locally in `chrome.storage.local`.
 - It does not transmit meeting information externally.
 
@@ -34,7 +34,8 @@ The following may be stored locally in the browser:
 - run progress
 - final report rows
 
-Lobby Access result rows may include the previous and new lobby values. They do
-not include attendees, organizer details, meeting bodies, or meeting links.
+Lobby Access result rows may include previous and new values for lobby bypass
+and join-screen meeting information. They do not include attendees, organizer
+details, meeting bodies, or meeting links.
 
 No remote analytics, telemetry, or advertising services are used.

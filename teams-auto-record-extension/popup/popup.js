@@ -43,10 +43,10 @@
       clearMessage: MESSAGE_TYPES.CLEAR_LOBBY_RESULTS,
       updatedMessage: MESSAGE_TYPES.LOBBY_STATE_UPDATED,
       subtitle:
-        "Preview meetings first, then change only who can bypass the lobby.",
+        "Preview meetings first, then set both Lobby Access settings to Everyone.",
       startLabel: "Start lobby access",
-      alreadyLabel: "Already Everyone",
-      alreadyCountKey: "alreadyEveryone",
+      alreadyLabel: "Already configured",
+      alreadyCountKey: "alreadyConfigured",
       filename: "teams-lobby-access-report.csv",
       buildReport: buildLobbyCsv
     }
@@ -204,13 +204,14 @@
 
   function renderReport(results) {
     const rows = results || [];
+    const isLobby = activeFeature === FEATURES.LOBBY_ACCESS;
     elements.reportBody.innerHTML = "";
     elements.reportCount.textContent = `${rows.length} rows`;
 
     if (rows.length === 0) {
       const row = document.createElement("tr");
       const cell = document.createElement("td");
-      cell.colSpan = 6;
+      cell.colSpan = isLobby ? 10 : 6;
       cell.textContent = "No preview or automation results yet.";
       row.appendChild(cell);
       elements.reportBody.appendChild(row);
@@ -219,14 +220,25 @@
 
     rows.forEach(item => {
       const row = document.createElement("tr");
-      [
+      const values = [
         item.number,
         item.title,
         item.date,
-        item.time,
+        item.time
+      ];
+      if (isLobby) {
+        values.push(
+          item.previousLobbyBypassValue,
+          item.newLobbyBypassValue,
+          item.previousJoinScreenInfoValue,
+          item.newJoinScreenInfoValue
+        );
+      }
+      values.push(
         item.status,
         item.error
-      ].forEach(value => {
+      );
+      values.forEach(value => {
         const cell = document.createElement("td");
         cell.textContent = value || "";
         row.appendChild(cell);
@@ -283,6 +295,9 @@
     elements.startButton.textContent = settings.startLabel;
     elements.alreadyCountLabel.textContent = settings.alreadyLabel;
     elements.desiredAction.classList.toggle("hidden", !isLobby);
+    document.querySelectorAll("[data-lobby-column]").forEach(column => {
+      column.classList.toggle("hidden", !isLobby);
+    });
     applyConfig(configs[activeFeature]);
     clearMessages();
     renderState(states[activeFeature]);
@@ -366,7 +381,7 @@
 
         const action =
           activeFeature === FEATURES.LOBBY_ACCESS
-            ? "set lobby bypass to Everyone"
+            ? "set both lobby access settings to Everyone"
             : "enable automatic recording and transcription";
         const warningLine =
           found > 20
